@@ -15,7 +15,7 @@ def main():
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     # get train and val loader
-    train_loader, val_loader = load_data(data_dir, resolution, train_val_split, patch_size, batch_size, nr_imgs=15)
+    train_loader, val_loader = load_data(data_dir, resolution, train_val_split, patch_size, batch_size, nr_imgs=5)
 
     # get the model, optimizer and loss function
     model = CNN().to(device)
