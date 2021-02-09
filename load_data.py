@@ -15,7 +15,7 @@ class Dataset(torch.utils.data.Dataset):
     """
     def __init__(self, scores, masks, patch_size):
         self.scores = scores.reshape(-1, scores.shape[2])          # shape = (N, 2), grade and case
-        self.scores = np.any(self.scores > 0, axis=1).astype(int)  # shape = (N, 1), scores binary
+        self.scores = np.all(self.scores > 1, axis=1).astype(int)  # shape = (N, 1), scores binary, mild is not frac
         self.patches = []                                          # patch containing the mask of this vertebrae
 
         # get patches

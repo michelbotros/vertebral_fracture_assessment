@@ -5,7 +5,7 @@ import torch.nn.functional as F
 class CNN(nn.Module):
     """
     Initial (simple) 3D CNN, that performs binary classification with as input a 3D patch of mask of vertebrae.
-    As vanilla as possible: Conv => ReLU => MaxPool (2x) and two fully connected layers with a Sigmoid at the end.
+    As vanilla as possible: Conv => ReLU => MaxPool and two fully connected layers with a Sigmoid at the end.
     """
     def __init__(self):
         super(CNN, self).__init__()

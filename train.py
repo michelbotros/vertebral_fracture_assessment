@@ -8,6 +8,7 @@ import torch
 import torch.nn as nn
 from torch.optim import Adam
 import os
+from torchsummary import summary
 
 
 def main():
@@ -15,15 +16,16 @@ def main():
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     # get train and val loader
-    train_loader, val_loader = load_data(data_dir, resolution, train_val_split, patch_size, batch_size, nr_imgs=5)
+    train_loader, val_loader = load_data(data_dir, resolution, train_val_split, patch_size, batch_size, nr_imgs=15)
 
     # get the model, optimizer and loss function
     model = CNN().to(device)
+    summary(model, input_size=(1, *patch_size), batch_size=batch_size)
     optimizer = Adam(model.parameters(), lr=lr)
     bce = nn.BCELoss()
 
     # keep track of stuff with wandb
-    # TODO: add information about data set (splt, frequency fractures etc..)
+    # TODO: add information about data set (the model, split, frequency fractures etc..)
     os.environ["WANDB_API_KEY"] = wandb_key
 
     run = wandb.init(project="binary_classifier_xVertSeg",
@@ -37,6 +39,8 @@ def main():
                      })
 
     # run the training loop
+    # TODO: add relevant metrics precision, recall things:
+    #  if we change mild to no be considered fractured, the frequency of fractures is low
     for epoch in tqdm(range(epochs)):
 
         # training
@@ -81,8 +85,8 @@ def main():
             val_acc.append(acc.item())
 
         # logging
-        wandb.log({'train loss': np.mean(train_loss), 'train acc': np.mean(train_acc), 'val loss': np.mean(val_loss),
-                   'val acc': np.mean(val_acc)})
+        wandb.log({'epoch': epoch, 'train loss': np.mean(train_loss), 'train acc': np.mean(train_acc),
+                   'val loss': np.mean(val_loss), 'val acc': np.mean(val_acc)})
     run.finish()
 
 
