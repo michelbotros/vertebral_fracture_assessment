@@ -2,10 +2,8 @@ from config import data_dir, base_dir, resolution, train_val_split, patch_size, 
 from load_data import load_data
 from tqdm import tqdm
 import numpy as np
-from dataset import Dataset
-from torch.utils.data import DataLoader
 import wandb
-from model import CNN
+from models import CNN
 import torch
 import torch.nn as nn
 from torch.optim import Adam
@@ -16,32 +14,16 @@ def main():
     # set device for training
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    # load images, masks and scores
-    imgs, msks, scores = load_data(data_dir, resolution, nr_imgs=15)
-
-    # shuffle
-    IDs = np.arange(len(msks))
-    np.random.shuffle(IDs)
-
-    # choose split
-    n_train = int(train_val_split * len(IDs))
-    train_IDs = IDs[:n_train]
-    val_IDs = IDs[n_train:]
-
-    # apply split
-    train_set = Dataset(scores[train_IDs], msks[train_IDs], patch_size)
-    val_set = Dataset(scores[val_IDs], msks[val_IDs], patch_size)
-
-    # initialize dataloaders
-    train_loader = DataLoader(train_set, batch_size=batch_size)
-    val_loader = DataLoader(val_set, batch_size=batch_size)
+    # get train and val loader
+    train_loader, val_loader = load_data(data_dir, resolution, train_val_split, patch_size, batch_size, nr_imgs=15)
 
     # get the model, optimizer and loss function
     model = CNN().to(device)
     optimizer = Adam(model.parameters(), lr=lr)
     bce = nn.BCELoss()
 
-    # keep track of stuff with wandb (can add more stuff like about the split and data set)
+    # keep track of stuff with wandb
+    # TODO: add information about data set (splt, frequency fractures etc..)
     os.environ["WANDB_API_KEY"] = wandb_key
 
     run = wandb.init(project="binary_classifier_xVertSeg",
@@ -101,7 +83,6 @@ def main():
         # logging
         wandb.log({'train loss': np.mean(train_loss), 'train acc': np.mean(train_acc), 'val loss': np.mean(val_loss),
                    'val acc': np.mean(val_acc)})
-
     run.finish()
 
 
