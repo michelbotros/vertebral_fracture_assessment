@@ -9,6 +9,8 @@ import torch.nn as nn
 from torch.optim import Adam
 import os
 from torchsummary import summary
+from pytorch_lightning.loggers import WandbLogger
+from pytorch_lightning import Trainer
 
 
 def main():
@@ -16,78 +18,28 @@ def main():
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     # get train and val loader
-    train_loader, val_loader = load_data(data_dir, resolution, train_val_split, patch_size, batch_size, nr_imgs=15)
+    train_loader, val_loader = load_data(data_dir, resolution, train_val_split, patch_size, batch_size, nr_imgs=5)
 
     # get the model, optimizer and loss function
     model = CNN().to(device)
     summary(model, input_size=(1, *patch_size), batch_size=batch_size)
-    optimizer = Adam(model.parameters(), lr=lr)
-    bce = nn.BCELoss()
 
     # keep track of stuff with wandb
     # TODO: add information about data set (the model, split, frequency fractures etc..)
     os.environ["WANDB_API_KEY"] = wandb_key
 
-    run = wandb.init(project="binary_classifier_xVertSeg",
-                     config={
-                         "batch_size": batch_size,
-                         "patch_size": patch_size,
-                         "learning_rate": lr,
-                         "epochs": epochs,
-                         "optimizer": optimizer,
-                         "dataset": "xVertSeg",
-                     })
-
     # run the training loop
-    # TODO: add relevant metrics precision, recall things:
-    #  if we change mild to no be considered fractured, the frequency of fractures is low
-    for epoch in tqdm(range(epochs)):
+    wandb_logger = WandbLogger()
 
-        # training
-        train_loss = []
-        train_acc = []
+    trainer = Trainer(
+        logger=wandb_logger,
+        log_every_n_steps=50,
+        gpus=-1,
+        max_epochs=100,
+        deterministic=True
+    )
 
-        for X, y in train_loader:
-            X, y = X.to(device), y.to(device)
-            optimizer.zero_grad()
-
-            # make predictions
-            y_pred = model(X)
-
-            # compute train_loss and backward
-            loss = bce(y_pred, y)
-            loss.backward()
-            optimizer.step()
-
-            # compute train acc
-            y_pred = torch.round(y_pred)
-            acc = torch.mean((y == y_pred).to(dtype=torch.float32))
-
-            # store the info for this train batch
-            train_loss.append(loss.item())
-            train_acc.append(acc.item())
-
-        # validation
-        val_loss = []
-        val_acc = []
-
-        for X, y in val_loader:
-            with torch.no_grad():
-                X, y = X.to(device), y.to(device)
-                y_pred = model(X)
-
-                loss = bce(y_pred, y)
-                y_pred = torch.round(y_pred)
-                acc = torch.mean((y == y_pred).to(dtype=torch.float32))
-
-            # store the info for this val batch
-            val_loss.append(loss.item())
-            val_acc.append(acc.item())
-
-        # logging
-        wandb.log({'epoch': epoch, 'train loss': np.mean(train_loss), 'train acc': np.mean(train_acc),
-                   'val loss': np.mean(val_loss), 'val acc': np.mean(val_acc)})
-    run.finish()
+    trainer.fit(model, train_loader, val_loader)
 
 
 if __name__ == '__main__':

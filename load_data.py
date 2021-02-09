@@ -45,7 +45,7 @@ class Dataset(torch.utils.data.Dataset):
         return X, y
 
 
-def load_data(data_dir, resolution, train_val_split, patch_size, batch_size, nr_imgs=15):
+def load_data(data_dir, resolution, train_val_split, patch_size, batch_size, nr_imgs=5):
     """"
     Function to load the images, masks and scores from a directory.
     Returns train and validation data loaders.
@@ -94,8 +94,8 @@ def load_data(data_dir, resolution, train_val_split, patch_size, batch_size, nr_
     val_set = Dataset(scores[val_IDs], msks[val_IDs], patch_size)
 
     # initialize data loaders
-    train_loader = DataLoader(train_set, batch_size=batch_size)
-    val_loader = DataLoader(val_set, batch_size=batch_size)
+    train_loader = DataLoader(train_set, batch_size=batch_size, num_workers=8)
+    val_loader = DataLoader(val_set, batch_size=batch_size, num_workers=8)
 
     print('Size train set: {}'.format(train_set.__len__()))
     print('Size val set: {}'.format(val_set.__len__()))
