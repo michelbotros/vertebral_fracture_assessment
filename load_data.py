@@ -14,9 +14,8 @@ class Dataset(torch.utils.data.Dataset):
     Dataset class for a simple dataset containing masks of vertebrae and associated scores.'
     """
     def __init__(self, scores, masks, patch_size):
-        self.scores = scores.reshape(-1, scores.shape[2])          # shape = (N, 2), grade and case
-        self.scores = np.all(self.scores > 1, axis=1).astype(int)  # shape = (N, 1), scores binary, mild is not frac
         self.patches = []                                          # patch containing the mask of this vertebrae
+        self.scores = scores.flatten()
 
         # get patches
         for mask in masks:
@@ -45,7 +44,7 @@ class Dataset(torch.utils.data.Dataset):
         return X, y
 
 
-def load_data(data_dir, resolution, train_val_split, patch_size, batch_size, nr_imgs=5):
+def load_data(data_dir, resolution, train_val_split, patch_size, batch_size, nr_imgs=15):
     """"
     Function to load the images, masks and scores from a directory.
     Returns train and validation data loaders.
@@ -55,6 +54,11 @@ def load_data(data_dir, resolution, train_val_split, patch_size, batch_size, nr_
     img_paths = [os.path.join(img_dir, f) for f in sorted(os.listdir(img_dir))][:nr_imgs]
     msk_paths = [os.path.join(msk_dir, f) for f in sorted(os.listdir(msk_dir))][:nr_imgs]
     scores = pd.read_csv(os.path.join(data_dir, 'scores.csv'), header=None).to_numpy().reshape(15, 5, 2)[:nr_imgs]
+    scores = np.all(scores > 1, axis=2).astype(int)           # shape = (15, 5) scores binary, mild is not frac
+
+    # compute weight (inverse frequency) over the whole data set
+    weight = scores.size / np.sum(scores)
+    print('Computed weight: {}'.format(weight))
 
     imgs = []
     msks = []
@@ -82,29 +86,34 @@ def load_data(data_dir, resolution, train_val_split, patch_size, batch_size, nr_
 
     # shuffle
     IDs = np.arange(len(msks))
-    np.random.shuffle(IDs)
 
-    # choose split
-    n_train = int(train_val_split * len(IDs))
-    train_IDs = IDs[:n_train]
-    val_IDs = IDs[n_train:]
+    unbalanced = True
 
-    # apply split
-    train_set = Dataset(scores[train_IDs], msks[train_IDs], patch_size)
-    val_set = Dataset(scores[val_IDs], msks[val_IDs], patch_size)
+    while unbalanced:
+        np.random.shuffle(IDs)
 
-    # initialize data loaders
-    train_loader = DataLoader(train_set, batch_size=batch_size, num_workers=8)
-    val_loader = DataLoader(val_set, batch_size=batch_size, num_workers=8)
+        # choose split
+        n_train = int(train_val_split * len(IDs))
+        train_IDs = IDs[:n_train]
+        val_IDs = IDs[n_train:]
 
-    print('Size train set: {}'.format(train_set.__len__()))
-    print('Size val set: {}'.format(val_set.__len__()))
+        # apply split
+        train_set = Dataset(scores[train_IDs], msks[train_IDs], patch_size)
+        val_set = Dataset(scores[val_IDs], msks[val_IDs], patch_size)
 
-    # we can look at rate of which fractures occur in the data set
-    train_frac_freq = np.sum(train_set.scores) / len(train_set.scores)
-    val_frac_freq = np.sum(val_set.scores) / len(val_set.scores)
+        # initialize data loaders
+        train_loader = DataLoader(train_set, batch_size=batch_size, num_workers=8)
+        val_loader = DataLoader(val_set, batch_size=batch_size, num_workers=8)
+
+        # we can look at rate of which fractures occur in the data set
+        train_frac_freq = np.sum(train_set.scores) / len(train_set.scores)
+        val_frac_freq = np.sum(val_set.scores) / len(val_set.scores)
+
+        if np.abs(train_frac_freq - val_frac_freq) < 0.1:
+            unbalanced = False
 
     print('Frequency of fractures in train set: {}'.format(train_frac_freq))
     print('Frequency of fractures in val set: {}'.format(val_frac_freq))
 
-    return train_loader, val_loader
+    return train_loader, val_loader, train_IDs, val_IDs, weight
+

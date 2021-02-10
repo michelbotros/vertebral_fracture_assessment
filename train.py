@@ -1,12 +1,7 @@
-from config import data_dir, base_dir, resolution, train_val_split, patch_size, batch_size, epochs, lr, wandb_key
+from config import data_dir, resolution, train_val_split, patch_size, batch_size, epochs, lr, wandb_key, use_weights
 from load_data import load_data
-from tqdm import tqdm
-import numpy as np
-import wandb
 from models import CNN
 import torch
-import torch.nn as nn
-from torch.optim import Adam
 import os
 from torchsummary import summary
 from pytorch_lightning.loggers import WandbLogger
@@ -18,24 +13,36 @@ def main():
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     # get train and val loader
-    train_loader, val_loader = load_data(data_dir, resolution, train_val_split, patch_size, batch_size, nr_imgs=5)
+    train_loader, val_loader, train_ids, val_ids, weight = load_data(data_dir, resolution, train_val_split, patch_size,
+                                                                     batch_size)
+    # put weight tensor on device
+    w = torch.tensor(weight, device=device)
 
     # get the model, optimizer and loss function
-    model = CNN().to(device)
+    model = CNN(w).to(device)
     summary(model, input_size=(1, *patch_size), batch_size=batch_size)
 
-    # keep track of stuff with wandb
-    # TODO: add information about data set (the model, split, frequency fractures etc..)
+    # log everything
     os.environ["WANDB_API_KEY"] = wandb_key
+    wandb_logger = WandbLogger(project="binary_classifier_xVertSeg")
+    wandb_logger.log_hyperparams({
+                         "batch_size": batch_size,
+                         "patch_size": patch_size,
+                         "learning_rate": lr,
+                         "weight": weight,
+                         "use_weights": use_weights,
+                         "epochs": epochs,
+                         "dataset": "xVertSeg",
+                         "train_ids": train_ids,
+                         "val_ids": val_ids
+                     })
 
-    # run the training loop
-    wandb_logger = WandbLogger()
-
+    # train the model
     trainer = Trainer(
         logger=wandb_logger,
         log_every_n_steps=50,
         gpus=-1,
-        max_epochs=100,
+        max_epochs=epochs,
         deterministic=True
     )
 
