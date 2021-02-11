@@ -40,7 +40,7 @@ def main():
     # train the model
     trainer = Trainer(
         logger=wandb_logger,
-        log_every_n_steps=50,
+        log_every_n_steps=1,
         gpus=-1,
         max_epochs=epochs,
         deterministic=True
@@ -50,5 +50,4 @@ def main():
 
 
 if __name__ == '__main__':
-    # add arguments and such
     main()

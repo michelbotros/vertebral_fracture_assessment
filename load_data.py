@@ -26,7 +26,6 @@ class Sampler:
                 indexes = np.random.choice(len(self.scores), self.batch_size, replace=True)
                 bad_batch = not(1 in self.scores[indexes])
             res.append(indexes)
-
         return iter(res)
 
 
@@ -135,6 +134,5 @@ def load_data(data_dir, resolution, train_val_split, patch_size, batch_size, nr_
     # initialize data loaders, use custom sampling that ensures one positive sample per batch
     train_loader = DataLoader(train_set, batch_sampler=Sampler(train_set.scores, batch_size), num_workers=8)
     val_loader = DataLoader(val_set, batch_sampler=Sampler(val_set.scores, batch_size), num_workers=8)
-
     return train_loader, val_loader, train_IDs, val_IDs, weight
 
