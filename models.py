@@ -3,7 +3,7 @@ import torch.nn.functional as F
 import pytorch_lightning as pl
 from torch.optim import Adam
 import torch
-from pytorch_lightning.metrics.functional.classification import accuracy, auroc, precision, recall
+from sklearn.metrics import accuracy_score, roc_auc_score, recall_score, precision_score
 from config import lr, use_weights
 
 
@@ -54,16 +54,22 @@ class CNN(pl.LightningModule):
             bce = nn.BCEWithLogitsLoss()
 
         loss = bce(out, y)
-        self.log('train loss', loss, on_epoch=True)
+        self.log('train loss', loss)
 
         # compute metrics
         sigmoid = nn.Sigmoid()
-        y_pred_soft = sigmoid(out)
-        y_pred_hard = torch.round(y_pred_soft)
-        self.log('train acc', accuracy(y_pred_hard, y), on_epoch=True)
-        # self.log('train auroc', auroc(y_pred_soft, y), on_epoch=True)
-        self.log('train precision', precision(y_pred_soft, y, num_classes=1), on_epoch=True)
-        self.log('train sensitivity', recall(y_pred_soft, y, num_classes=1), on_epoch=True)
+        y_prob = sigmoid(out)
+        y_pred = torch.round(y_prob)
+
+        y = y.cpu().detach().numpy()
+        y_prob = y_prob.cpu().detach().numpy()
+        y_pred = y_pred.cpu().detach().numpy()
+
+        self.log('train acc', accuracy_score(y, y_pred))
+        # self.log('train roc auc', roc_auc_score(y, y_prob))
+        self.log('train precision', precision_score(y, y_pred))
+        self.log('train sensitivity', recall_score(y, y_pred))
+        self.log('train specificity', recall_score(y, y_pred, pos_label=0))
 
         return loss
 
@@ -83,12 +89,18 @@ class CNN(pl.LightningModule):
 
         # compute metrics
         sigmoid = nn.Sigmoid()
-        y_pred_soft = sigmoid(out)
-        y_pred_hard = torch.round(y_pred_soft)
-        self.log('val acc', accuracy(y_pred_hard, y), on_epoch=True)
-        # self.log('val auroc', auroc(y_pred_soft, y), on_epoch=True)
-        self.log('val precision', precision(y_pred_soft, y, num_classes=1), on_epoch=True)
-        self.log('val sensitivity', recall(y_pred_soft, y, num_classes=1), on_epoch=True)
+        y_prob = sigmoid(out)
+        y_pred = torch.round(y_prob)
+
+        y = y.cpu().detach().numpy()
+        y_prob = y_prob.cpu().detach().numpy()
+        y_pred = y_pred.cpu().detach().numpy()
+
+        self.log('val acc', accuracy_score(y, y_pred))
+        # self.log('val roc auc', roc_auc_score(y, y_prob))
+        self.log('val precision', precision_score(y, y_pred))
+        self.log('val sensitivity', recall_score(y, y_pred))
+        self.log('val specificity', recall_score(y, y_pred, pos_label=0))
 
         return loss
 
