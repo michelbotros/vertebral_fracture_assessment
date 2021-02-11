@@ -65,11 +65,11 @@ class CNN(pl.LightningModule):
         y_prob = y_prob.cpu().detach().numpy()
         y_pred = y_pred.cpu().detach().numpy()
 
-        self.log('train acc', accuracy_score(y, y_pred))
-        # self.log('train roc auc', roc_auc_score(y, y_prob))
-        self.log('train precision', precision_score(y, y_pred))
-        self.log('train sensitivity', recall_score(y, y_pred))
-        self.log('train specificity', recall_score(y, y_pred, pos_label=0))
+        self.log('train acc', accuracy_score(y, y_pred), on_epoch=True)
+        self.log('train roc auc', roc_auc_score(y, y_prob), on_epoch=True)
+        # self.log('train precision', precision_score(y, y_pred))
+        # self.log('train sensitivity', recall_score(y, y_pred))
+        # self.log('train specificity', recall_score(y, y_pred, pos_label=0))
 
         return loss
 
@@ -96,11 +96,11 @@ class CNN(pl.LightningModule):
         y_prob = y_prob.cpu().detach().numpy()
         y_pred = y_pred.cpu().detach().numpy()
 
-        self.log('val acc', accuracy_score(y, y_pred))
-        # self.log('val roc auc', roc_auc_score(y, y_prob))
-        self.log('val precision', precision_score(y, y_pred))
-        self.log('val sensitivity', recall_score(y, y_pred))
-        self.log('val specificity', recall_score(y, y_pred, pos_label=0))
+        self.log('val acc', accuracy_score(y, y_pred), on_epoch=True)
+        self.log('val roc auc', roc_auc_score(y, y_prob), on_epoch=True)
+        # self.log('val precision', precision_score(y, y_pred))
+        # self.log('val sensitivity', recall_score(y, y_pred))
+        # self.log('val specificity', recall_score(y, y_pred, pos_label=0))
 
         return loss
 

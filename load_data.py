@@ -9,6 +9,27 @@ from torch.utils.data import DataLoader
 import torch
 
 
+class Sampler:
+    """"
+    Simple sampler that ensures there is at least one positive label in the batch.
+    """
+    def __init__(self, scores, batch_size):
+        self.scores = scores
+        self.batch_size = batch_size
+        self.n_batches = len(scores) // self.batch_size             # drop_last = True
+
+    def __iter__(self):
+        res = []
+        for _ in range(self.n_batches):
+            bad_batch = True
+            while bad_batch:
+                indexes = np.random.choice(len(self.scores), self.batch_size, replace=True)
+                bad_batch = not(1 in self.scores[indexes])
+            res.append(indexes)
+
+        return iter(res)
+
+
 class Dataset(torch.utils.data.Dataset):
     """
     Dataset class for a simple dataset containing masks of vertebrae and associated scores.'
@@ -48,6 +69,7 @@ def load_data(data_dir, resolution, train_val_split, patch_size, batch_size, nr_
     """"
     Function to load the images, masks and scores from a directory.
     Returns train and validation data loaders.
+    TODO: split functionality of this function: (1) load (2) resample (3) splitting
     """
     img_dir = os.path.join(data_dir, 'images')
     msk_dir = os.path.join(data_dir, 'masks')
@@ -65,12 +87,12 @@ def load_data(data_dir, resolution, train_val_split, patch_size, batch_size, nr_
     hdrs = []
 
     # load images with headers and resample to working resolution
-    print('Loading images...')
-    for path in tqdm(img_paths):
-        image, header = read_image(path)
-        resampled_img = resample_image(image, header.spacing, resolution)  # resample image
-        flipped_img = np.rot90(resampled_img, axes=(1, 2))  # flip the image, so patient is upright
-        imgs.append(flipped_img)
+    # print('Loading images...')
+    # for path in tqdm(img_paths):
+    #     image, header = read_image(path)
+    #     resampled_img = resample_image(image, header.spacing, resolution)  # resample image
+    #     flipped_img = np.rot90(resampled_img, axes=(1, 2))  # flip the image, so patient is upright
+    #     imgs.append(flipped_img)
 
     # load masks
     print('Loading masks...')
@@ -81,12 +103,11 @@ def load_data(data_dir, resolution, train_val_split, patch_size, batch_size, nr_
         msks.append(flipped_msk)
 
     # convert to numpy for indexing
-    imgs = np.asarray(imgs, dtype=object)
+    # imgs = np.asarray(imgs, dtype=object)
     msks = np.asarray(msks, dtype=object)
 
-    # shuffle
+    # make train and val split on image level
     IDs = np.arange(len(msks))
-
     unbalanced = True
 
     while unbalanced:
@@ -101,10 +122,6 @@ def load_data(data_dir, resolution, train_val_split, patch_size, batch_size, nr_
         train_set = Dataset(scores[train_IDs], msks[train_IDs], patch_size)
         val_set = Dataset(scores[val_IDs], msks[val_IDs], patch_size)
 
-        # initialize data loaders
-        train_loader = DataLoader(train_set, batch_size=batch_size, num_workers=8)
-        val_loader = DataLoader(val_set, batch_size=batch_size, num_workers=8)
-
         # we can look at rate of which fractures occur in the data set
         train_frac_freq = np.sum(train_set.scores) / len(train_set.scores)
         val_frac_freq = np.sum(val_set.scores) / len(val_set.scores)
@@ -114,6 +131,10 @@ def load_data(data_dir, resolution, train_val_split, patch_size, batch_size, nr_
 
     print('Frequency of fractures in train set: {}'.format(train_frac_freq))
     print('Frequency of fractures in val set: {}'.format(val_frac_freq))
+
+    # initialize data loaders, use custom sampling that ensures one positive sample per batch
+    train_loader = DataLoader(train_set, batch_sampler=Sampler(train_set.scores, batch_size), num_workers=8)
+    val_loader = DataLoader(val_set, batch_sampler=Sampler(val_set.scores, batch_size), num_workers=8)
 
     return train_loader, val_loader, train_IDs, val_IDs, weight
 
