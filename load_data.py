@@ -23,7 +23,7 @@ class Sampler:
         for _ in range(self.n_batches):
             bad_batch = True
             while bad_batch:
-                indexes = np.random.choice(len(self.scores), self.batch_size, replace=True)
+                indexes = np.random.choice(len(self.scores), self.batch_size, replace=False)
                 bad_batch = not(1 in self.scores[indexes] and 0 in self.scores[indexes])
             res.append(indexes)
         return iter(res)
