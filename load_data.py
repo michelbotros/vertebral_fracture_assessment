@@ -11,7 +11,7 @@ import torch
 
 class Sampler:
     """"
-    Simple sampler that ensures there is at least one positive label in the batch.
+    Simple sampler that ensures there is at least one positive label but also one negative label in the batch.
     """
     def __init__(self, scores, batch_size):
         self.scores = scores
@@ -24,7 +24,7 @@ class Sampler:
             bad_batch = True
             while bad_batch:
                 indexes = np.random.choice(len(self.scores), self.batch_size, replace=True)
-                bad_batch = not(1 in self.scores[indexes])
+                bad_batch = not(1 in self.scores[indexes] and 0 in self.scores[indexes])
             res.append(indexes)
         return iter(res)
 
@@ -75,7 +75,7 @@ def load_data(data_dir, resolution, train_val_split, patch_size, batch_size, nr_
     img_paths = [os.path.join(img_dir, f) for f in sorted(os.listdir(img_dir))][:nr_imgs]
     msk_paths = [os.path.join(msk_dir, f) for f in sorted(os.listdir(msk_dir))][:nr_imgs]
     scores = pd.read_csv(os.path.join(data_dir, 'scores.csv'), header=None).to_numpy().reshape(15, 5, 2)[:nr_imgs]
-    scores = np.all(scores > 1, axis=2).astype(int)           # shape = (15, 5) scores binary, mild is not frac
+    scores = np.all(scores > 0, axis=2).astype(int)           # shape = (15, 5) scores binary, mild is frac
 
     # compute weight (inverse frequency) over the whole data set
     weight = scores.size / np.sum(scores)
