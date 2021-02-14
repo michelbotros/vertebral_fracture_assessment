@@ -4,7 +4,7 @@ import pytorch_lightning as pl
 from torch.optim import Adam
 import torch
 from sklearn.metrics import accuracy_score, roc_auc_score, recall_score, precision_score
-from config import lr, use_weights
+from config import lr
 
 
 class CNN(pl.LightningModule):
@@ -12,16 +12,13 @@ class CNN(pl.LightningModule):
     Initial (simple) 3D CNN, that performs binary classification with as input a 3D patch of mask of vertebrae.
     As vanilla as possible: Conv => ReLU => MaxPool and two fully connected layers with a Sigmoid at the end.
     """
-    def __init__(self, weight):
+    def __init__(self):
         super(CNN, self).__init__()
         self.conv1 = self.conv_block(1, 16)
         self.conv2 = self.conv_block(16, 32)
         self.conv3 = self.conv_block(32, 64)
         self.fc1 = nn.Linear(64 * 14 * 14 * 14, 32)
         self.fc2 = nn.Linear(32, 1)
-
-        # class weight
-        self.weight = weight
 
     def conv_block(self, in_channels, out_channels):
         conv_block = nn.Sequential(
@@ -46,11 +43,7 @@ class CNN(pl.LightningModule):
         out = self(x)
 
         # compute loss
-        if use_weights:
-            bce = nn.BCEWithLogitsLoss(pos_weight=self.weight)
-        else:
-            bce = nn.BCEWithLogitsLoss()
-
+        bce = nn.BCEWithLogitsLoss()
         loss = bce(out, y)
         self.log('train loss', loss)
 
@@ -76,11 +69,7 @@ class CNN(pl.LightningModule):
         out = self(x)
 
         # compute loss
-        if use_weights:
-            bce = nn.BCEWithLogitsLoss(pos_weight=self.weight)
-        else:
-            bce = nn.BCEWithLogitsLoss()
-
+        bce = nn.BCEWithLogitsLoss()
         loss = bce(out, y)
         self.log('val loss', loss)
 

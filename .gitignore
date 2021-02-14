@@ -1,5 +1,7 @@
 *
 
+!/notebooks/
+!/notebooks/**
 !Dockerfile
 !*.py
 !.gitignore

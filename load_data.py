@@ -5,7 +5,6 @@ import pandas as pd
 from tiger.resampling import resample_image, resample_mask
 from tiger.io import read_image
 from tiger.patches import PatchExtractor3D
-from torch.utils.data import DataLoader
 import torch
 
 
@@ -14,7 +13,7 @@ class Sampler:
     Simple sampler that ensures there is at least one positive label but also one negative label in the batch.
     """
     def __init__(self, scores, batch_size):
-        self.scores = scores
+        self.scores = np.asarray(scores)                            # numpy indexing
         self.batch_size = batch_size
         self.n_batches = len(scores) // self.batch_size             # drop_last = True
 
@@ -31,22 +30,45 @@ class Sampler:
 
 class Dataset(torch.utils.data.Dataset):
     """
-    Dataset class for a simple dataset containing masks of vertebrae and associated scores.'
+    Dataset class for a simple dataset containing patches of vertebrae and associated scores.
+    Also keeps track of where the vertebrae was found in the dataset (ID and type)'
     """
     def __init__(self, scores, masks, patch_size):
-        self.patches = []                                          # patch containing the mask of this vertebrae
-        self.scores = scores.flatten()
+        self.patches = []                      # (N, 1)    N is the number of vertebrae
+        self.scores = []                       # (N, 1)    fractured or not
+        self.datasets = []                     # (N, 1)    dataset of where the image was found
+        self.IDS = []                          # (N, 1)    ID of the image, in which this vertebrae is found
+        self.vertebraes = []                   # (N, 1)    8-25: T1-T12, L1-L6
 
-        # get patches
-        for mask in masks:
-            labels = np.unique(mask)[1:]
-            centres = [np.mean(np.argwhere(mask == l), axis=0, dtype=int) for l in labels]
-            patch_extracter = PatchExtractor3D(mask)
+        for row, mask in enumerate(masks):
+            # get the dataset and id of this case
+            dataset = scores[row][0]
+            id = scores[row][1]
 
-            for label, centre in zip(labels, centres):
-                patch = patch_extracter.extract_cuboid(centre, patch_size)
-                patch = np.where(patch == label, 1, 0)  # filter patch to only contain this vertebrae
-                self.patches.append(patch)
+            # get the vert scores, 18 vertebraes, grade and case, need float to detect nans
+            vert_scores = scores[row][2:].reshape(18, 2).astype(float)
+
+            # find annotated labels in the score sheet
+            for i, vert_score in enumerate(vert_scores):
+                if not (np.isnan(vert_score).any()):
+                    label = i + 8                              # because we skip the 7 C-vertebrae
+
+                    # if we also find this label in the mask
+                    if label in np.unique(mask):
+                        # get the patch containing this vertebrae
+                        centre = np.mean(np.argwhere(mask == label), axis=0, dtype=int)
+                        patch_extracter = PatchExtractor3D(mask)
+                        patch = patch_extracter.extract_cuboid(centre, patch_size)
+                        patch = np.where(patch == label, 1, 0)          # filter patch to only contain this vertebrae
+
+                        # add score and info about this patch
+                        self.patches.append(patch)
+                        self.scores.append(vert_score.any().astype(int))       # binarize: fractured or not
+                        self.datasets.append(dataset)
+                        self.IDS.append(id)
+                        self.vertebraes.append(label)
+
+        print('Found a total of {} in this set'.format(len(self.patches)))
 
     def __len__(self):
         """
@@ -63,76 +85,58 @@ class Dataset(torch.utils.data.Dataset):
         y = torch.tensor(self.scores[i], dtype=torch.float32).unsqueeze(0)
         return X, y
 
+    def fracture_freq(self):
+        """"
+        Computes the frequency of fractures in the dataset.
+        """
+        return np.sum(self.scores) / len(self.scores)
 
-def load_data(data_dir, resolution, train_val_split, patch_size, batch_size, nr_imgs=15):
+
+def split_train_val(msks, scores, train_val_split, patch_size):
+    """
+    Splits the loaded data into a train and validation split.
+    """
+    # make train and val split on image level
+    IDs = np.arange(len(msks))
+    np.random.shuffle(IDs)
+
+    # choose split
+    n_train = int(train_val_split * len(IDs))
+    train_IDs = IDs[:n_train]
+    val_IDs = IDs[n_train:]
+
+    # convert the scores to numpy, for indexing
+    np_scores = scores.to_numpy()
+
+    # apply split
+    train_set = Dataset(np_scores[train_IDs], msks[train_IDs], patch_size)
+    val_set = Dataset(np_scores[val_IDs], msks[val_IDs], patch_size)
+
+    print('Frequency of fractures in train set: {}'.format(train_set.fracture_freq()))
+    print('Frequency of fractures in val set: {}'.format(val_set.fracture_freq()))
+
+    return train_set, val_set, train_IDs, val_IDs
+
+
+def load_data(data_dir, resolution):
     """"
-    Function to load the images, masks and scores from a directory.
-    Returns train and validation data loaders.
-    TODO: split functionality of this function: (1) load (2) resample (3) splitting
+    Loads images, masks and scores from a directory (on image level).
     """
     img_dir = os.path.join(data_dir, 'images')
     msk_dir = os.path.join(data_dir, 'masks')
-    img_paths = [os.path.join(img_dir, f) for f in sorted(os.listdir(img_dir))][:nr_imgs]
-    msk_paths = [os.path.join(msk_dir, f) for f in sorted(os.listdir(msk_dir))][:nr_imgs]
-    scores = pd.read_csv(os.path.join(data_dir, 'scores.csv'), header=None).to_numpy().reshape(15, 5, 2)[:nr_imgs]
-    scores = np.all(scores > 0, axis=2).astype(int)           # shape = (15, 5) scores binary, mild is frac
-
-    # compute weight (inverse frequency) over the whole data set
-    weight = scores.size / np.sum(scores)
-    print('Computed weight: {}'.format(weight))
-
-    imgs = []
-    msks = []
-    hdrs = []
-
-    # load images with headers and resample to working resolution
-    # print('Loading images...')
-    # for path in tqdm(img_paths):
-    #     image, header = read_image(path)
-    #     resampled_img = resample_image(image, header.spacing, resolution)  # resample image
-    #     flipped_img = np.rot90(resampled_img, axes=(1, 2))  # flip the image, so patient is upright
-    #     imgs.append(flipped_img)
+    img_paths = [os.path.join(img_dir, f) for f in sorted(os.listdir(img_dir))]
+    msk_paths = [os.path.join(msk_dir, f) for f in sorted(os.listdir(msk_dir))]
+    scores = pd.read_csv(os.path.join(data_dir, 'scores.csv'))
 
     # load masks
-    print('Loading masks...')
-    for path in tqdm(msk_paths):
+    msks = np.empty(len(msk_paths), dtype=object)
+    print('Loading masks from {}...'.format(data_dir))
+    for i, path in enumerate(tqdm(msk_paths)):
         mask, header = read_image(path)
         resampled_mask = resample_mask(mask, header.spacing, resolution)
         flipped_msk = np.rot90(resampled_mask, axes=(1, 2))
-        msks.append(flipped_msk)
+        msks[i] = flipped_msk
 
-    # convert to numpy for indexing
-    # imgs = np.asarray(imgs, dtype=object)
-    msks = np.asarray(msks, dtype=object)
+    return msks, scores
 
-    # make train and val split on image level
-    IDs = np.arange(len(msks))
-    unbalanced = True
-
-    while unbalanced:
-        np.random.shuffle(IDs)
-
-        # choose split
-        n_train = int(train_val_split * len(IDs))
-        train_IDs = IDs[:n_train]
-        val_IDs = IDs[n_train:]
-
-        # apply split
-        train_set = Dataset(scores[train_IDs], msks[train_IDs], patch_size)
-        val_set = Dataset(scores[val_IDs], msks[val_IDs], patch_size)
-
-        # we can look at rate of which fractures occur in the data set
-        train_frac_freq = np.sum(train_set.scores) / len(train_set.scores)
-        val_frac_freq = np.sum(val_set.scores) / len(val_set.scores)
-
-        if np.abs(train_frac_freq - val_frac_freq) < 0.1:
-            unbalanced = False
-
-    print('Frequency of fractures in train set: {}'.format(train_frac_freq))
-    print('Frequency of fractures in val set: {}'.format(val_frac_freq))
-
-    # initialize data loaders, use custom sampling that ensures one positive sample per batch
-    train_loader = DataLoader(train_set, batch_sampler=Sampler(train_set.scores, batch_size), num_workers=8)
-    val_loader = DataLoader(val_set, batch_sampler=Sampler(val_set.scores, batch_size), num_workers=8)
-    return train_loader, val_loader, train_IDs, val_IDs, weight
 
