@@ -30,22 +30,22 @@ class Sampler:
 
 class Dataset(torch.utils.data.Dataset):
     """
-    Dataset class for a simple dataset containing patches of vertebrae and associated scores.
-    Also keeps track of where the vertebrae was found in the dataset (ID and type)'
+    Dataset class for a simple dataset containing patches of vertebra and associated scores.
+    Also keeps track of where the vertebra was found in the dataset (ID and type)'
     """
     def __init__(self, scores, masks, patch_size):
         self.patches = []                      # (N, 1)    N is the number of vertebrae
         self.scores = []                       # (N, 1)    fractured or not
-        self.datasets = []                     # (N, 1)    dataset of where the image was found
-        self.IDS = []                          # (N, 1)    ID of the image, in which this vertebrae is found
-        self.vertebraes = []                   # (N, 1)    8-25: T1-T12, L1-L6
+        self.sources = []                      # (N, 1)    dataset of where the image was found
+        self.IDS = []                          # (N, 1)    ID of the image, in which this vertebra is found
+        self.vertebrae = []                    # (N, 1)    8-25: T1-T12, L1-L6
 
         for row, mask in enumerate(masks):
             # get the dataset and id of this case
-            dataset = scores[row][0]
+            source = scores[row][0]
             id = scores[row][1]
 
-            # get the vert scores, 18 vertebraes, grade and case, need float to detect nans
+            # get the vert scores, 18 vertebrae, grade and case, need float to detect nans
             vert_scores = scores[row][2:].reshape(18, 2).astype(float)
 
             # find annotated labels in the score sheet
@@ -55,18 +55,20 @@ class Dataset(torch.utils.data.Dataset):
 
                     # if we also find this label in the mask
                     if label in np.unique(mask):
-                        # get the patch containing this vertebrae
+                        # get the patch containing this vertebra
                         centre = np.mean(np.argwhere(mask == label), axis=0, dtype=int)
                         patch_extracter = PatchExtractor3D(mask)
                         patch = patch_extracter.extract_cuboid(centre, patch_size)
-                        patch = np.where(patch == label, 1, 0)          # filter patch to only contain this vertebrae
+                        patch = np.where(patch == label, 1, 0)          # filter patch to only contain this vertebra
 
                         # add score and info about this patch
                         self.patches.append(patch)
                         self.scores.append(vert_score.any().astype(int))       # binarize: fractured or not
-                        self.datasets.append(dataset)
+                        self.sources.append(source)
                         self.IDS.append(id)
-                        self.vertebraes.append(label)
+                        self.vertebrae.append(label)
+                    else:
+                        print('Did not find label {} in the mask as well. Case: {} {}'.format(label, source, id))
 
         print('Found a total of {} in this set'.format(len(self.patches)))
 
@@ -78,12 +80,27 @@ class Dataset(torch.utils.data.Dataset):
 
     def __getitem__(self, i):
         """"
-        Return a single sample: a patch of mask containing one vertebrae and its binary score"
+        Return a single sample: a patch of mask containing one vertebra and its binary score"
         """
         # add channel dimension, use float32 as type
         X = torch.tensor(self.patches[i], dtype=torch.float32).unsqueeze(0)
         y = torch.tensor(self.scores[i], dtype=torch.float32).unsqueeze(0)
         return X, y
+
+    def get_scores(self):
+        return np.asarray(self.scores)
+
+    def get_sources(self):
+        return np.asarray(self.sources)
+
+    def get_vertebrae(self):
+        return np.asarray(self.vertebrae)
+
+    def get_patches(self):
+        return np.asarray(self.patches)
+
+    def get_ids(self):
+        return np.asarray(self.IDS)
 
     def fracture_freq(self):
         """"
@@ -125,7 +142,7 @@ def load_data(data_dir, resolution):
     img_dir = os.path.join(data_dir, 'images')
     msk_dir = os.path.join(data_dir, 'masks')
     img_paths = [os.path.join(img_dir, f) for f in sorted(os.listdir(img_dir))]
-    msk_paths = [os.path.join(msk_dir, f) for f in sorted(os.listdir(msk_dir))]
+    msk_paths = [os.path.join(msk_dir, f) for f in sorted(os.listdir(msk_dir))][:70]
     scores = pd.read_csv(os.path.join(data_dir, 'scores.csv'))
 
     # load masks
