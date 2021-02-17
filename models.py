@@ -14,7 +14,7 @@ class CNN(pl.LightningModule):
     """
     def __init__(self):
         super(CNN, self).__init__()
-        self.conv1 = self.conv_block(1, 16)
+        self.conv1 = self.conv_block(2, 16)
         self.conv2 = self.conv_block(16, 32)
         self.conv3 = self.conv_block(32, 64)
         self.fc1 = nn.Linear(64 * 14 * 14 * 14, 32)
@@ -22,7 +22,7 @@ class CNN(pl.LightningModule):
 
     def conv_block(self, in_channels, out_channels):
         conv_block = nn.Sequential(
-            nn.Conv3d(in_channels, out_channels, kernel_size=(3, 3, 3)),
+            nn.Conv3d(in_channels, out_channels, kernel_size=(3, 3, 3), groups=2),
             nn.ReLU(),
             nn.MaxPool3d((2, 2, 2))
         )

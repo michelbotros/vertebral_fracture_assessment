@@ -11,7 +11,7 @@ resolution = (1.0, 1.0, 1.0)
 
 # training configs
 train_val_split = 0.8
-batch_size = 15
+batch_size = 8
 lr = 1e-3
 epochs = 25
 wandb_key = '272782fa3a98a5f215cc2e580ebb4628245ea8e8'

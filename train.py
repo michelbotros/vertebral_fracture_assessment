@@ -16,23 +16,24 @@ def main():
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     # load data from corresponding data dir
-    xvertseg_msks, xvertseg_scores = load_data(xvertseg_dir, resolution)
-    verse2019_msks, verse2019_scores = load_data(verse2019_dir, resolution)
+    xvertseg_imgs, xvertseg_msks, xvertseg_scores = load_data(xvertseg_dir, resolution)
+    verse2019_imgs, verse2019_msks, verse2019_scores = load_data(verse2019_dir, resolution)
 
     # stack data sets together
+    imgs = np.concatenate((xvertseg_imgs, verse2019_imgs))
     msks = np.concatenate((xvertseg_msks, verse2019_msks))
     scores = xvertseg_scores.append(verse2019_scores)
 
     # split in train/val/test
-    train_set, val_set, train_IDs, val_IDs = split_train_val(msks, scores, train_val_split, patch_size)
+    train_set, val_set, train_IDs, val_IDs = split_train_val(imgs, msks, scores, train_val_split, patch_size)
 
-    # # initialize data loaders, use custom sampling that ensures one positive sample per batch
+    # initialize data loaders, use custom sampling that ensures one positive sample per batch
     train_loader = DataLoader(train_set, batch_sampler=Sampler(train_set.scores, batch_size), num_workers=8)
     val_loader = DataLoader(val_set, batch_sampler=Sampler(val_set.scores, batch_size), num_workers=8)
 
     # get the model and put on device
     model = CNN().to(device)
-    summary(model, input_size=(1, *patch_size), batch_size=batch_size)
+    summary(model, input_size=(2, *patch_size), batch_size=batch_size)
 
     # log everything
     os.environ["WANDB_API_KEY"] = wandb_key
