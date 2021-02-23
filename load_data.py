@@ -1,11 +1,11 @@
 import numpy as np
-from tqdm.auto import tqdm
 import os
 import pandas as pd
 from tiger.resampling import resample_image, resample_mask
 from tiger.io import read_image
 from tiger.patches import PatchExtractor3D
 import torch
+from monai.transforms import Compose, RandGaussianNoise, RandRotate, RandGaussianSmooth, RandGaussianSharpen
 
 
 class Sampler:
@@ -13,7 +13,7 @@ class Sampler:
     Simple sampler that ensures there is at least one positive label but also one negative label in the batch.
     """
     def __init__(self, scores, batch_size):
-        self.scores = np.asarray(scores)                            # numpy indexing
+        self.scores = scores
         self.batch_size = batch_size
         self.n_batches = len(scores) // self.batch_size             # drop_last = True
 
@@ -33,14 +33,27 @@ class Dataset(torch.utils.data.Dataset):
     Dataset class for a simple dataset containing patches of vertebra and associated scores.
     Also keeps track of where the vertebra was found in the dataset (ID and type)'
     """
-    def __init__(self, scores, images, masks, patch_size):
+    def __init__(self, scores, images, masks, patch_size, transforms=False):
         self.patches = []                      # (N, 2)    N is the number of vertebrae, img and msk channel
         self.scores = []                       # (N, 1)    fractured or not
         self.sources = []                      # (N, 1)    dataset of where the image was found
         self.IDS = []                          # (N, 1)    ID of the image, in which this vertebra is found
         self.vertebrae = []                    # (N, 1)    8-25: T1-T12, L1-L6
+        self.transforms = transforms
 
-        for row, mask in enumerate(tqdm(masks)):
+        # transform after patch extraction
+        self.spatial_transforms = Compose([
+            RandRotate(range_x=1/6 * np.pi, range_y=1/6 * np.pi, range_z=0, prob=0.3, mode='nearest')
+        ])
+
+        self.other_transforms = Compose([
+            RandGaussianNoise(prob=0.2),
+            RandGaussianSharpen(prob=0.2),
+            RandGaussianSmooth(prob=0.2)
+        ])
+
+        # the patch extraction
+        for row, mask in enumerate(masks):
             # get the dataset and id of this case
             source = scores[row][0]
             id = scores[row][1]
@@ -58,14 +71,14 @@ class Dataset(torch.utils.data.Dataset):
                         # get the patch containing this vertebra
                         centre = tuple(np.mean(np.argwhere(mask == label), axis=0, dtype=int))
 
-                        # patch extractor for the image
-                        patch_extracter_img = PatchExtractor3D(images[row])
+                        # patch extractor for the image, pad with -1000 (air)
+                        patch_extracter_img = PatchExtractor3D(images[row], pad_value=-1000)
                         patch_img = patch_extracter_img.extract_cuboid(centre, patch_size)
 
                         # patch extractor for the mask
                         patch_extracter_msk = PatchExtractor3D(mask)
                         patch_msk = patch_extracter_msk.extract_cuboid(centre, patch_size)
-                        patch_msk = np.where(patch_msk == label, patch_msk, 0)  # only contain this vertebra
+                        patch_msk = np.where(patch_msk == label, 1, 0)  # only contain this vertebra, binary
 
                         # add channel dimension
                         patch_img = np.expand_dims(patch_img, axis=0)
@@ -78,10 +91,6 @@ class Dataset(torch.utils.data.Dataset):
                         self.sources.append(source)
                         self.IDS.append(id)
                         self.vertebrae.append(label)
-                    # else:
-                    #     print('Did not find label {} in the mask as well. Case: {} {}'.format(label, source, id))
-
-        print('Found a total of {} annotated vertebrae in this set'.format(len(self.patches)))
 
     def __len__(self):
         """
@@ -92,11 +101,24 @@ class Dataset(torch.utils.data.Dataset):
     def __getitem__(self, i):
         """"
         Return a single sample: a patch of mask containing one vertebra and its binary score"
+        Applies data
         """
-        # use float32 as type,
-        X = torch.tensor(self.patches[i], dtype=torch.float32)
-        y = torch.tensor(self.scores[i], dtype=torch.float32).unsqueeze(0)
-        return X, y
+        # get patch, consisting of an image and mask
+        x = self.patches[i]
+        y = self.scores[i]
+
+        # apply transformation, only for the training set
+        if self.transforms:
+            # apply spatial transform on both image and mask
+            x = self.spatial_transforms(x)
+
+            # apply the others only on the image
+            x[0] = self.other_transforms(x[0])
+
+        # to tensor
+        y = torch.tensor(y, dtype=torch.float32).unsqueeze(0)
+        x = torch.tensor(x, dtype=torch.float32)
+        return x, y
 
     def get_scores(self):
         return np.asarray(self.scores)
@@ -113,41 +135,44 @@ class Dataset(torch.utils.data.Dataset):
     def get_ids(self):
         return np.asarray(self.IDS)
 
-    def fracture_freq(self):
+    def frac_freq(self):
         """"
         Computes the frequency of fractures in the dataset.
         """
         return np.sum(self.scores) / len(self.scores)
 
 
-def split_train_val(imgs, msks, scores, train_val_split, patch_size):
+def split_train_val_test(imgs, msks, scores, patch_size, data_aug, train_percent=0.7, val_percent=0.2):
     """
-    Splits the loaded data into a train and validation split.
+    Splits the loaded data into a train, validation and test set.
     """
     # make train and val split on image level
     IDs = np.arange(len(msks))
+    np.random.seed(1993)
     np.random.shuffle(IDs)
 
-    # choose split
-    n_train = int(train_val_split * len(IDs))
-    train_IDs = IDs[:n_train]
-    val_IDs = IDs[n_train:]
+    N = len(IDs)
+    n_train_end = int(train_percent * N)
+    n_val_end = int(val_percent * N) + n_train_end
+    train_ids = IDs[:n_train_end]
+    val_ids = IDs[n_train_end:n_val_end]
+    test_ids = IDs[n_val_end:]
 
     # convert the scores to numpy, for indexing
     np_scores = scores.to_numpy()
 
-    print('Available cases: {} \nSplitting into train: {}, val: {}'.format(len(msks), n_train, len(msks) - n_train))
-
     # apply split
-    print('Extracting patches train set...')
-    train_set = Dataset(np_scores[train_IDs], imgs[train_IDs], msks[train_IDs], patch_size)
-    print('Extracting patches val set...')
-    val_set = Dataset(np_scores[val_IDs], imgs[val_IDs], msks[val_IDs], patch_size)
+    print('Available cases: {} \ntrain: {}, val: {}, test: {}'.format(N, len(train_ids), len(val_ids), len(test_ids)))
+    print('Extracting patches...')
+    train_set = Dataset(np_scores[train_ids], imgs[train_ids], msks[train_ids], patch_size, transforms=data_aug)
+    val_set = Dataset(np_scores[val_ids], imgs[val_ids], msks[val_ids], patch_size)
+    test_set = Dataset(np_scores[test_ids], imgs[test_ids], msks[test_ids], patch_size)
 
-    print('Frequency of fractures in train set: {}'.format(train_set.fracture_freq()))
-    print('Frequency of fractures in val set: {}'.format(val_set.fracture_freq()))
-
-    return train_set, val_set, train_IDs, val_IDs
+    print('train: {}, val: {}, test: {}'.format(train_set.__len__(), val_set.__len__(), test_set.__len__()))
+    print('Frequencies of fractures: \ntrain: {}, val: {}, test: {}'.format(train_set.frac_freq(),
+                                                                            val_set.frac_freq(),
+                                                                            test_set.frac_freq()))
+    return train_set, val_set, test_set
 
 
 def load_data(data_dir, resolution):
@@ -170,15 +195,16 @@ def load_data(data_dir, resolution):
 
     # load images
     print('Loading images from {}...'.format(img_dir))
-    for i, path in enumerate(tqdm(img_paths)):
+    for i, path in enumerate(img_paths):
         image, header = read_image(path)
-        resampled_image = resample_mask(image, header.spacing, resolution)
+        resampled_image = resample_image(image, header.spacing, resolution)
         flipped_img = np.rot90(resampled_image, axes=(1, 2))
-        imgs[i] = flipped_img
+        clipped_img = np.clip(flipped_img, -1000, 2000)
+        imgs[i] = clipped_img
 
-    # load masks
+    # load masks,
     print('Loading masks from {}...'.format(msk_dir))
-    for i, path in enumerate(tqdm(msk_paths)):
+    for i, path in enumerate(msk_paths):
         mask, header = read_image(path)
         resampled_mask = resample_mask(mask, header.spacing, resolution)
         flipped_msk = np.rot90(resampled_mask, axes=(1, 2))

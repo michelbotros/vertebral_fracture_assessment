@@ -3,92 +3,93 @@ import torch.nn.functional as F
 import pytorch_lightning as pl
 from torch.optim import Adam
 import torch
-from sklearn.metrics import accuracy_score, roc_auc_score, recall_score, precision_score
-from config import lr
+from pytorch_lightning.metrics.functional import accuracy, auroc
 
 
 class CNN(pl.LightningModule):
     """
-    Initial (simple) 3D CNN, that performs binary classification with as input a 3D patch of mask of vertebrae.
-    As vanilla as possible: Conv => ReLU => MaxPool and two fully connected layers with a Sigmoid at the end.
+    Initial 3D CNN.
+    Three blocks of: Conv => Relu => (Batch Norm) => MaxPool.
+    Two fully connected layers.
     """
-    def __init__(self):
+    def __init__(self, lr, groups, batch_norm):
         super(CNN, self).__init__()
-        self.conv1 = self.conv_block(2, 16)
-        self.conv2 = self.conv_block(16, 32)
-        self.conv3 = self.conv_block(32, 64)
-        self.fc1 = nn.Linear(64 * 14 * 14 * 14, 32)
-        self.fc2 = nn.Linear(32, 1)
+
+        # net configs
+        self.lr = lr
+        self.groups = groups
+        self.batch_norm = batch_norm
+
+        # the net
+        self.conv1 = self.conv_block(2, 32)
+        self.conv2 = self.conv_block(32, 64)
+        self.conv3 = self.conv_block(64, 128)
+        self.fc1 = nn.Linear(128 * 14 * 14 * 14, 256)
+        self.relu = nn.ReLU()
+        self.fc2 = nn.Linear(256, 1)
+        self.sigmoid = nn.Sigmoid()
 
     def conv_block(self, in_channels, out_channels):
-        conv_block = nn.Sequential(
-            nn.Conv3d(in_channels, out_channels, kernel_size=(3, 3, 3), groups=2),
-            nn.ReLU(),
-            nn.MaxPool3d((2, 2, 2))
-        )
-        return conv_block
+        layers = [nn.Conv3d(in_channels, out_channels, kernel_size=(3, 3, 3), groups=self.groups),
+                  nn.ReLU()]
+
+        if self.batch_norm:
+            layers.append(nn.BatchNorm3d(out_channels))
+
+        layers.append(nn.MaxPool3d((2, 2, 2)))
+        return nn.Sequential(*layers)
 
     def forward(self, x):
         x = self.conv1(x)
         x = self.conv2(x)
         x = self.conv3(x)
-        x = x.view(-1, 64 * 14 * 14 * 14)
-        x = F.relu(self.fc1(x))
-        out = self.fc2(x)
-        return out
+        x = x.view(-1, 128 * 14 * 14 * 14)
+        x = self.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x
+
+    def loss(self, logits, y):
+        bce = nn.BCEWithLogitsLoss()
+        return bce(logits, y)
 
     def training_step(self, batch, batch_idx):
-        # forward batch
         x, y = batch
-        out = self(x)
+        logits = self.forward(x)
+        loss = self.loss(logits, y)
+        y_hat = torch.gt(logits, 0).int()
 
-        # compute loss
-        bce = nn.BCEWithLogitsLoss()
-        loss = bce(out, y)
-        self.log('train loss', loss)
-
-        # compute metrics
-        sigmoid = nn.Sigmoid()
-        y_prob = sigmoid(out)
-        y_pred = torch.round(y_prob)
-
-        y = y.cpu().detach().numpy()
-        y_prob = y_prob.cpu().detach().numpy()
-        y_pred = y_pred.cpu().detach().numpy()
-
-        self.log('train acc', accuracy_score(y, y_pred))
-        self.log('train roc auc', roc_auc_score(y, y_prob))
-        # self.log('train precision', precision_score(y, y_pred))
-        # self.log('train sensitivity', recall_score(y, y_pred))
-        # self.log('train specificity', recall_score(y, y_pred, pos_label=0))
+        d = {'train loss': loss.item(), 'train acc': accuracy(y, y_hat).item()}
+        print('train loss: {:05.2f}, train acc: {:.2f}'.format(d['train loss'], d['train acc']))
+        self.log_dict(d)
         return loss
 
+    def validation_epoch_end(self, outputs):
+        # accumulate labels and logits
+        y = torch.stack([output['y'] for output in outputs]).view(-1)
+        logits = torch.stack([output['logits'] for output in outputs]).view(-1)
+
+        # compute hard predictions, probabilities and loss
+        y_hat = torch.gt(logits, 0).int()
+        y_prob = self.sigmoid(logits)
+        loss = self.loss(logits, y)
+
+        print('Evaluating on {} samples.'.format(len(y)))
+        d = {'val loss': loss.item(),
+             'val acc': accuracy(y, y_hat).item(),
+             'val auroc': auroc(y_prob, y.int(), pos_label=1).item()}
+
+        print('val loss: {:05.2f}, val acc: {:.2f}, val auroc: {:.2f}'.format(d['val loss'],
+                                                                              d['val acc'],
+                                                                              d['val auroc']
+                                                                              ))
+        self.log_dict(d)
+
     def validation_step(self, batch, batch_idx):
-        # forward batch
         x, y = batch
-        out = self(x)
-
-        # compute loss
-        bce = nn.BCEWithLogitsLoss()
-        loss = bce(out, y)
-        self.log('val loss', loss)
-
-        # compute metrics
-        sigmoid = nn.Sigmoid()
-        y_prob = sigmoid(out)
-        y_pred = torch.round(y_prob)
-
-        y = y.cpu().detach().numpy()
-        y_prob = y_prob.cpu().detach().numpy()
-        y_pred = y_pred.cpu().detach().numpy()
-
-        self.log('val acc', accuracy_score(y, y_pred))
-        self.log('val roc auc', roc_auc_score(y, y_prob))
-        # self.log('val precision', precision_score(y, y_pred))
-        # self.log('val sensitivity', recall_score(y, y_pred))
-        # self.log('val specificity', recall_score(y, y_pred, pos_label=0))
+        logits = self.forward(x)
+        return {'y': y, 'logits': logits}
 
     def configure_optimizers(self):
-        optimizer = Adam(self.parameters(), lr=lr)
+        optimizer = Adam(self.parameters(), lr=self.lr)
         return optimizer
 
