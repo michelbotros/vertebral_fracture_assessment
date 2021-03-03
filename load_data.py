@@ -6,8 +6,7 @@ from tiger.resampling import resample_image, resample_mask
 from tiger.io import read_image, write_image
 from tiger.patches import PatchExtractor3D
 import torch
-from monai.transforms import Compose, RandGaussianNoise, RandRotate, RandGaussianSmooth, RandGaussianSharpen
-from sklearn.preprocessing import StandardScaler
+from monai.transforms import Compose, RandGaussianNoise, RandRotate, RandGaussianSmooth
 
 
 class Sampler:
@@ -61,7 +60,7 @@ class Dataset(torch.utils.data.Dataset):
                     # if we also find this label in the mask
                     if label in np.unique(mask):
                         centre = tuple(np.mean(np.argwhere(mask == label), axis=0, dtype=int))
-                        patch_extracter_img = PatchExtractor3D(images[row], pad_value=-1000) # pad with air
+                        patch_extracter_img = PatchExtractor3D(images[row], pad_value=-1000)  # pad with air
                         patch_img = patch_extracter_img.extract_cuboid(centre, patch_size)
                         patch_img = np.clip(patch_img, -1000, 3000)
                         patch_extracter_msk = PatchExtractor3D(mask)
@@ -91,9 +90,6 @@ class Dataset(torch.utils.data.Dataset):
         self.img_patches = (self.img_patches - self.img_mean) / self.img_std
         self.msk_patches = (self.msk_patches - self.msk_mean) / self.msk_std
 
-        print('Images norm mean: {}, std: {}'.format(np.mean(self.img_patches), np.std(self.img_patches)))
-        print('Masks norm mean: {}, std: {}'.format(np.mean(self.msk_patches), np.std(self.msk_patches)))
-
     def norm_stats(self):
         return self.img_mean, self.img_std, self.msk_mean, self.msk_std
 
@@ -110,13 +106,13 @@ class Dataset(torch.utils.data.Dataset):
         """
         # get image, mask and score
         patch_img = self.img_patches[i]
-        patch_msk = self.img_patches[i]
+        patch_msk = self.msk_patches[i]
         y = self.scores[i]
         y = torch.tensor(y, dtype=torch.float32).unsqueeze(0)
 
         if self.transforms:
             # define transforms
-            spatial_transforms = Compose([RandRotate(range_x=0.35, range_y=0.35, range_z=0, prob=0.25, mode='nearest')])
+            spatial_transforms = Compose([RandRotate(prob=0.25, range_x=0.3, range_y=0.3, range_z=0, mode='nearest')])
             other_transforms = Compose([RandGaussianNoise(prob=0.25, mean=0, std=0.5),
                                         RandGaussianSmooth(prob=0.25, sigma_x=(0, 1.5), sigma_y=(0, 1.5), sigma_z=(0, 1.5))])
 
