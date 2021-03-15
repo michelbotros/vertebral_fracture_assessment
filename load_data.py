@@ -37,10 +37,12 @@ class Dataset(torch.utils.data.Dataset):
     def __init__(self, scores, images, masks, patch_size, transforms=False, norm_stats=None):
         self.img_patches = []                  # (N, patchsize) the image patch
         self.msk_patches = []                  # (N, patchsize) the mask patch
-        self.scores = []                       # (N, 1)         fractured or not
+        self.grades = []                       # (N, 1)         the grade
+        self.cases = []                        # (N, 1)         the case
         self.sources = []                      # (N, 1)         dataset of where the image was found
         self.IDS = []                          # (N, 1)         ID of the image, in which this vertebra is found
         self.vertebrae = []                    # (N, 1)         1-18 => T1-L6
+        self.patch_size = patch_size
         self.transforms = transforms           # whether to apply transforms or not
 
         # the patch extraction
@@ -61,16 +63,17 @@ class Dataset(torch.utils.data.Dataset):
                     if label in np.unique(mask):
                         centre = tuple(np.mean(np.argwhere(mask == label), axis=0, dtype=int))
                         patch_extracter_img = PatchExtractor3D(images[row], pad_value=-1000)  # pad with air
-                        patch_img = patch_extracter_img.extract_cuboid(centre, patch_size)
+                        patch_img = patch_extracter_img.extract_cuboid(centre, self.patch_size)
                         patch_img = np.clip(patch_img, -1000, 3000)
                         patch_extracter_msk = PatchExtractor3D(mask)
-                        patch_msk = patch_extracter_msk.extract_cuboid(centre, patch_size)
+                        patch_msk = patch_extracter_msk.extract_cuboid(centre, self.patch_size)
                         patch_msk = np.where(patch_msk == label, patch_msk, 0)  # only contain this vertebra, keep label
 
                         # add score and info about this patch
                         self.img_patches.append(patch_img)
                         self.msk_patches.append(patch_msk)
-                        self.scores.append((vert_score[0] > 0).astype(int))   # binarize: fractured or not
+                        self.grades.append(vert_score[0])   # grade
+                        self.cases.append(vert_score[1])    # case
                         self.sources.append(source)
                         self.IDS.append(id)
                         self.vertebrae.append(label)
@@ -107,7 +110,7 @@ class Dataset(torch.utils.data.Dataset):
         # get image, mask and score
         patch_img = self.img_patches[i]
         patch_msk = self.msk_patches[i]
-        y = self.scores[i]
+        y = self.grades[i]
         y = torch.tensor(y, dtype=torch.float32).unsqueeze(0)
 
         if self.transforms:
@@ -126,30 +129,6 @@ class Dataset(torch.utils.data.Dataset):
         x = np.stack((patch_img, patch_msk))
         x = torch.tensor(x, dtype=torch.float32)
         return x, y
-
-    def get_images(self):
-        return self.img_patches
-
-    def get_masks(self):
-        return self.msk_patches
-
-    def get_scores(self):
-        return np.asarray(self.scores)
-
-    def get_sources(self):
-        return np.asarray(self.sources)
-
-    def get_vertebrae(self):
-        return np.asarray(self.vertebrae)
-
-    def get_ids(self):
-        return np.asarray(self.IDS)
-
-    def frac_freq(self):
-        """"
-        Computes the frequency of fractures in the dataset.
-        """
-        return np.sum(self.scores) / len(self.scores)
 
 
 def split_train_val_test(imgs, msks, scores, patch_size, data_aug, train_percent=0.8, val_percent=0.1):
@@ -181,9 +160,6 @@ def split_train_val_test(imgs, msks, scores, patch_size, data_aug, train_percent
     val_set = Dataset(np_scores[val_ids], imgs[val_ids], msks[val_ids], patch_size, transforms=False, norm_stats=norm_stats)
     test_set = Dataset(np_scores[test_ids], imgs[test_ids], msks[test_ids], patch_size, transforms=False, norm_stats=norm_stats)
     print('train: {}, val: {}, test: {}'.format(train_set.__len__(), val_set.__len__(), test_set.__len__()))
-    print('Frequencies of fractures: \ntrain: {}, val: {}, test: {}'.format(train_set.frac_freq(),
-                                                                            val_set.frac_freq(),
-                                                                            test_set.frac_freq()))
     return train_set, val_set, test_set
 
 

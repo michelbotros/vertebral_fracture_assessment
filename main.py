@@ -17,13 +17,12 @@ from torch.utils.data.sampler import WeightedRandomSampler
 def train(model, train_set, val_set):
 
     # weighted sampling
-    sample_labels = train_set.get_scores()
-    weights = 1 / np.unique(sample_labels, return_counts=True)[1]
-    sample_weights = np.array([weights[label] for label in sample_labels])
+    weights = 1 / np.unique(train_set.grades, return_counts=True)[1]
+    sample_weights = np.array([weights[int(label)] for label in train_set.grades])
     train_sampler = WeightedRandomSampler(sample_weights, len(sample_weights))
 
     # initialize data loaders
-    train_loader = DataLoader(train_set, batch_size=batch_size, sampler=train_sampler, num_workers=16, drop_last=True)
+    train_loader = DataLoader(train_set, batch_size=batch_size,  num_workers=16, drop_last=True)
     val_loader = DataLoader(val_set, batch_size=batch_size, num_workers=16, drop_last=True)
 
     # log everything
@@ -37,22 +36,22 @@ def train(model, train_set, val_set):
         "data_aug": data_aug,
         "weight decay": weight_decay,
         "dropout": False,
-        "weighted sampling": True,
+        "weighted sampling": False,
         "dataset": "xVertSeg, Verse2019",
     })
 
     # define checkpoint callback
     checkpoint_callback = ModelCheckpoint(dirpath=os.path.join(experiments_dir, run_name),
-                                          filename='{epoch:02d}_{step:03d}_{val auroc:.2f}_{val f1:.2f}{val acc:.2f}',
-                                          monitor='val f1', mode='max', save_top_k=5)
+                                          filename='{epoch:02d}_{step:03d}_{val loss:.2f}_{val f1:.2f}{val acc:.2f}',
+                                          monitor='val acc', mode='max', save_top_k=5)
     # define trainer
     trainer = Trainer(
         logger=wandb_logger,
         callbacks=checkpoint_callback,
         log_every_n_steps=5,
-        val_check_interval=25,
+        val_check_interval=50,
         accelerator='dp',
-        gpus=4,
+        gpus=2,
         max_epochs=epochs,
         progress_bar_refresh_rate=0
     )
@@ -63,7 +62,7 @@ def train(model, train_set, val_set):
 
 
 def main(train_mode, test_mode):
-    # load data from corresponding data dir
+    # load data
     xvertseg_imgs, xvertseg_msks, xvertseg_scores = load_data(xvertseg_dir)
     verse2019_imgs, verse2019_msks, verse2019_scores = load_data(verse2019_dir)
 
@@ -79,8 +78,8 @@ def main(train_mode, test_mode):
     model = ResNetPl(lr=lr, weight_decay=weight_decay)
 
     # for printing the summary
-    # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    # summary(model.to(device), input_size=(2, *patch_size), batch_size=batch_size)
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    summary(model.to(device), input_size=(2, *patch_size), batch_size=batch_size)
 
     # train
     if train_mode:
@@ -89,6 +88,7 @@ def main(train_mode, test_mode):
         # use the best model just trained
         if test_mode:
             test_loader = DataLoader(test_set, batch_size=1, num_workers=16)
+            print('Testing model: {}'.format(trainer.checkpoint_callback.best_model_path))
             trainer.test(test_dataloaders=test_loader, ckpt_path='best')
 
 

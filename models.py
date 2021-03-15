@@ -5,14 +5,12 @@ from torch.optim import Adam
 import torch
 from wandb.sklearn import plot_confusion_matrix, plot_roc
 from sklearn.metrics import accuracy_score, roc_auc_score, f1_score
-from pytorch_lightning.metrics.functional import accuracy
 
 
 class ResNetPl(pl.LightningModule):
     """
     ResNet model for binary classification.
     """
-
     def __init__(self, lr, weight_decay):
         super(ResNetPl, self).__init__()
         self.lr = lr
@@ -30,40 +28,44 @@ class ResNetPl(pl.LightningModule):
     def accumulate_outputs(self, outputs):
         y = torch.stack([output['y'] for output in outputs]).view((-1, 1))
         logits = torch.stack([output['logits'] for output in outputs]).view((-1, 1))
-        y_hat = torch.gt(logits, 0)
-        y_prob = self.sigmoid(logits)
-        loss = self.loss(logits, y)
-        return y.int().cpu().numpy(), y_hat.int().cpu().numpy(), y_prob.cpu().numpy(), loss.cpu().numpy()
+
+        # networks targets are [0., 0.33, 0.66, 1.]  for grades [0., 1., 2., 3.]
+        y_mapped = y / 3
+        loss = self.loss(logits, y_mapped)
+        y_hat = torch.round(self.sigmoid(logits) * 3)         # compute hard predictions
+        return y.int().cpu().numpy(), y_hat.int().cpu().numpy(), loss.cpu().numpy()
 
     def validation_epoch_end(self, outputs):
-        y, y_hat, y_prob, loss = self.accumulate_outputs(outputs)
+        y, y_hat, loss = self.accumulate_outputs(outputs)
         print('Evaluating on {} samples.'.format(len(y)))
         acc = accuracy_score(y, y_hat)
-        auc = roc_auc_score(y, y_prob)
-        f1 = f1_score(y, y_hat)
-        print('val loss: {:05.2f}, val acc: {:.2f}, val f1: {:.2f}, val auroc: {:.2f}'.format(loss, acc, f1, auc))
-        self.log_dict({'val loss': loss, 'val acc': acc, 'val f1': f1, 'val auroc': auc})
+        f1 = f1_score(y, y_hat, average='micro')
+        print('val loss: {:05.2f}, val acc: {:.2f}, val f1: {:.2f}'.format(loss, acc, f1))
+        self.log_dict({'val loss': loss, 'val acc': acc, 'val f1': f1})
 
     def test_epoch_end(self, outputs):
-        y, y_hat, y_prob, loss = self.accumulate_outputs(outputs)
+        y, y_hat, loss = self.accumulate_outputs(outputs)
         print('Testing on {} samples.'.format(len(y)))
         acc = accuracy_score(y, y_hat)
-        auc = roc_auc_score(y, y_prob)
-        f1 = f1_score(y, y_hat)
-
-        # to plot ROC
-        y_prob_exp = np.concatenate((1 - y_prob, y_prob), axis=1)
-        plot_confusion_matrix(y, y_hat, labels=['Healthy', 'Fractured'])
-        plot_roc(y, y_prob_exp, labels=['Healthy', 'Fractured'], classes_to_plot=[1])
-        print('test loss: {:05.2f}, test acc: {:.2f}, test f1: {:.2f}, test auroc: {:.2f}'.format(loss, acc, f1, auc))
-        self.log_dict({'test loss': loss, 'test acc': acc, 'test f1': f1, 'test auroc': auc})
+        f1 = f1_score(y, y_hat, average='micro')
+        plot_confusion_matrix(y, y_hat, labels=['Healthy', 'Mild', 'Moderate', 'Severe'])
+        print('test loss: {:05.2f}, test acc: {:.2f}, test f1: {:.2f}'.format(loss, acc, f1))
+        self.log_dict({'test loss': loss, 'test acc': acc, 'test f1': f1})
 
     def training_step(self, batch, batch_idx):
         x, y = batch
         logits = self.forward(x)
-        loss = self.loss(logits, y)
-        y_hat = torch.gt(logits, 0)
-        acc = accuracy(y, y_hat)
+
+        # networks targets are [0., 0.33, 0.66, 1.]  for grades [0., 1., 2., 3.]
+        y_mapped = y / 3
+        loss = self.loss(logits, y_mapped)
+
+        # get the predictions
+        y_hat = torch.round(self.sigmoid(logits) * 3).int().cpu().numpy()
+        y = y.int().cpu().numpy()
+
+        # log loss and accuracy
+        acc = accuracy_score(y, y_hat)
         print('train loss: {:05.2f}, train acc: {:.2f}'.format(loss, acc))
         self.log_dict({'train loss': loss.item(), 'train acc': acc.item()}, sync_dist=True, on_epoch=True, on_step=True)
         return loss
@@ -191,7 +193,7 @@ class ResNet(nn.Module):
                  layers,
                  block_inplanes,
                  n_input_channels=2,
-                 dropout=True,
+                 dropout=False,
                  no_max_pool=False,
                  shortcut_type='B',
                  widen_factor=1.0,
