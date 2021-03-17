@@ -9,32 +9,12 @@ import torch
 from monai.transforms import Compose, RandGaussianNoise, RandRotate, RandGaussianSmooth
 
 
-class Sampler:
-    """"
-    Simple sampler that ensures there is at least one positive label but also one negative label in the batch.
-    """
-    def __init__(self, scores, batch_size):
-        self.scores = scores
-        self.batch_size = batch_size
-        self.n_batches = len(scores) // self.batch_size             # drop_last = True
-
-    def __iter__(self):
-        res = []
-        for _ in range(self.n_batches):
-            bad_batch = True
-            while bad_batch:
-                indexes = np.random.choice(len(self.scores), self.batch_size, replace=False)
-                bad_batch = not(1 in self.scores[indexes] and 0 in self.scores[indexes])
-            res.append(indexes)
-        return iter(res)
-
-
 class Dataset(torch.utils.data.Dataset):
     """
     Dataset class for a simple dataset containing patches of vertebra and associated scores.
     Also keeps track of where the vertebra was found in the dataset (ID and type)'
     """
-    def __init__(self, scores, images, masks, patch_size, transforms=False, norm_stats=None):
+    def __init__(self, scores, images, masks, patch_size, transforms=False):
         self.img_patches = []                  # (N, patchsize) the image patch
         self.msk_patches = []                  # (N, patchsize) the mask patch
         self.grades = []                       # (N, 1)         the grade
@@ -64,7 +44,7 @@ class Dataset(torch.utils.data.Dataset):
                         centre = tuple(np.mean(np.argwhere(mask == label), axis=0, dtype=int))
                         patch_extracter_img = PatchExtractor3D(images[row], pad_value=-1000)  # pad with air
                         patch_img = patch_extracter_img.extract_cuboid(centre, self.patch_size)
-                        patch_img = np.clip(patch_img, -1000, 3000)
+                        patch_img = np.clip(patch_img, -1000, 1500)
                         patch_extracter_msk = PatchExtractor3D(mask)
                         patch_msk = patch_extracter_msk.extract_cuboid(centre, self.patch_size)
                         patch_msk = np.where(patch_msk == label, patch_msk, 0)  # only contain this vertebra, keep label
@@ -82,19 +62,9 @@ class Dataset(torch.utils.data.Dataset):
         self.img_patches = np.asarray(self.img_patches)
         self.msk_patches = np.asarray(self.msk_patches)
 
-        # get norm stats
-        if norm_stats:
-            self.img_mean, self.img_std, self.msk_mean, self.msk_std = norm_stats
-        else:
-            self.img_mean, self.img_std = np.mean(self.img_patches), np.std(self.img_patches)
-            self.msk_mean, self.msk_std = np.mean(self.msk_patches), np.std(self.msk_patches)
-
-        # apply normalization => zero mean, unit variance
-        self.img_patches = (self.img_patches - self.img_mean) / self.img_std
-        self.msk_patches = (self.msk_patches - self.msk_mean) / self.msk_std
-
-    def norm_stats(self):
-        return self.img_mean, self.img_std, self.msk_mean, self.msk_std
+        # apply normalization => range [0, 1]
+        self.img_patches = (self.img_patches + 1000) / 2500
+        self.msk_patches = self.msk_patches / 18
 
     def __len__(self):
         """
@@ -104,7 +74,7 @@ class Dataset(torch.utils.data.Dataset):
 
     def __getitem__(self, i):
         """"
-        Return a single sample: a patch of mask containing one vertebra and its binary score"
+        Return a single sample: a patch of mask containing one vertebra and its grade"
         Applies data augmentation
         """
         # get image, mask and score
@@ -116,7 +86,7 @@ class Dataset(torch.utils.data.Dataset):
         if self.transforms:
             # define transforms
             spatial_transforms = Compose([RandRotate(prob=0.25, range_x=0.3, range_y=0.3, range_z=0, mode='nearest')])
-            other_transforms = Compose([RandGaussianNoise(prob=0.25, mean=0, std=0.5),
+            other_transforms = Compose([RandGaussianNoise(prob=0.25, mean=np.mean(patch_img), std=0.5),
                                         RandGaussianSmooth(prob=0.25, sigma_x=(0, 1.5), sigma_y=(0, 1.5), sigma_z=(0, 1.5))])
 
             # apply some on just the image, spatial transforms need to be applied to both
@@ -154,11 +124,8 @@ def split_train_val_test(imgs, msks, scores, patch_size, data_aug, train_percent
     print('Available cases: {} \ntrain: {}, val: {}, test: {}'.format(N, len(train_ids), len(val_ids), len(test_ids)))
     print('Extracting patches...')
     train_set = Dataset(np_scores[train_ids], imgs[train_ids], msks[train_ids], patch_size, transforms=data_aug)
-
-    # normalize test and val set with stats from train set
-    norm_stats = train_set.norm_stats()
-    val_set = Dataset(np_scores[val_ids], imgs[val_ids], msks[val_ids], patch_size, transforms=False, norm_stats=norm_stats)
-    test_set = Dataset(np_scores[test_ids], imgs[test_ids], msks[test_ids], patch_size, transforms=False, norm_stats=norm_stats)
+    val_set = Dataset(np_scores[val_ids], imgs[val_ids], msks[val_ids], patch_size, transforms=False)
+    test_set = Dataset(np_scores[test_ids], imgs[test_ids], msks[test_ids], patch_size, transforms=False)
     print('train: {}, val: {}, test: {}'.format(train_set.__len__(), val_set.__len__(), test_set.__len__()))
     return train_set, val_set, test_set
 

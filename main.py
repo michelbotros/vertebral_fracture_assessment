@@ -1,5 +1,5 @@
 from config import *
-from load_data import load_data, split_train_val_test, Sampler
+from load_data import load_data, split_train_val_test
 from models import ResNetPl
 import torch
 from torch.utils.data import DataLoader
@@ -12,17 +12,18 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 import numpy as np
 import argparse
 from torch.utils.data.sampler import WeightedRandomSampler
+import pickle
 
 
 def train(model, train_set, val_set):
 
     # weighted sampling
-    weights = 1 / np.unique(train_set.grades, return_counts=True)[1]
-    sample_weights = np.array([weights[int(label)] for label in train_set.grades])
-    train_sampler = WeightedRandomSampler(sample_weights, len(sample_weights))
+    # weights = 1 / np.unique(train_set.grades, return_counts=True)[1]
+    # sample_weights = np.array([weights[int(label)] for label in train_set.grades])
+    # train_sampler = WeightedRandomSampler(sample_weights, len(sample_weights))
 
     # initialize data loaders
-    train_loader = DataLoader(train_set, batch_size=batch_size,  num_workers=16, drop_last=True)
+    train_loader = DataLoader(train_set, batch_size=batch_size, num_workers=16, drop_last=True)
     val_loader = DataLoader(val_set, batch_size=batch_size, num_workers=16, drop_last=True)
 
     # log everything
@@ -42,14 +43,14 @@ def train(model, train_set, val_set):
 
     # define checkpoint callback
     checkpoint_callback = ModelCheckpoint(dirpath=os.path.join(experiments_dir, run_name),
-                                          filename='{epoch:02d}_{step:03d}_{val loss:.2f}_{val f1:.2f}{val acc:.2f}',
+                                          filename='{epoch:02d}_{step:03d}_{val loss:.2f}_{val acc:.2f}',
                                           monitor='val acc', mode='max', save_top_k=5)
     # define trainer
     trainer = Trainer(
         logger=wandb_logger,
         callbacks=checkpoint_callback,
         log_every_n_steps=5,
-        val_check_interval=50,
+        val_check_interval=75,
         accelerator='dp',
         gpus=2,
         max_epochs=epochs,
@@ -87,9 +88,20 @@ def main(train_mode, test_mode):
 
         # use the best model just trained
         if test_mode:
-            test_loader = DataLoader(test_set, batch_size=1, num_workers=16)
+            test_loader = DataLoader(test_set, batch_size=1, num_workers=16, shuffle=False)
             print('Testing model: {}'.format(trainer.checkpoint_callback.best_model_path))
-            trainer.test(test_dataloaders=test_loader, ckpt_path='best')
+
+            # get results on the test set
+            results = trainer.test(test_dataloaders=test_loader, ckpt_path='best')
+            soft_preds = results[0]['y_prob']
+
+            # save soft predictions
+            with open(os.path.join(experiments_dir, run_name, 'soft_preds.npy'), 'wb') as f:
+                np.save(f, soft_preds)
+
+            # save test set as well
+            with open(os.path.join(experiments_dir, run_name, 'test_set'), 'wb') as f:
+                pickle.dump(test_set, f)
 
 
 if __name__ == '__main__':

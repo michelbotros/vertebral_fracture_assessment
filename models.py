@@ -4,12 +4,12 @@ import pytorch_lightning as pl
 from torch.optim import Adam
 import torch
 from wandb.sklearn import plot_confusion_matrix, plot_roc
-from sklearn.metrics import accuracy_score, roc_auc_score, f1_score
+from sklearn.metrics import accuracy_score, roc_auc_score
 
 
 class ResNetPl(pl.LightningModule):
     """
-    ResNet model for binary classification.
+    ResNet model for grading.
     """
     def __init__(self, lr, weight_decay):
         super(ResNetPl, self).__init__()
@@ -32,35 +32,35 @@ class ResNetPl(pl.LightningModule):
         # networks targets are [0., 0.33, 0.66, 1.]  for grades [0., 1., 2., 3.]
         y_mapped = y / 3
         loss = self.loss(logits, y_mapped)
-        y_hat = torch.round(self.sigmoid(logits) * 3)         # compute hard predictions
-        return y.int().cpu().numpy(), y_hat.int().cpu().numpy(), loss.cpu().numpy()
+        y_prob = self.sigmoid(logits)
+        return y.int().cpu().numpy(), y_prob.cpu().numpy(), loss.cpu().numpy()
 
     def validation_epoch_end(self, outputs):
-        y, y_hat, loss = self.accumulate_outputs(outputs)
+        y, y_prob, loss = self.accumulate_outputs(outputs)
+        y_hat = np.round(y_prob * 3)         # compute hard predictions
         print('Evaluating on {} samples.'.format(len(y)))
         acc = accuracy_score(y, y_hat)
-        f1 = f1_score(y, y_hat, average='micro')
-        print('val loss: {:05.2f}, val acc: {:.2f}, val f1: {:.2f}'.format(loss, acc, f1))
-        self.log_dict({'val loss': loss, 'val acc': acc, 'val f1': f1})
+        print('val loss: {:05.2f}, val acc: {:.2f}'.format(loss, acc))
+        self.log_dict({'val loss': loss, 'val acc': acc})
 
     def test_epoch_end(self, outputs):
-        y, y_hat, loss = self.accumulate_outputs(outputs)
+        y, y_prob, loss = self.accumulate_outputs(outputs)
         print('Testing on {} samples.'.format(len(y)))
+        y_hat = np.round(y_prob * 3)         # compute hard predictions
         acc = accuracy_score(y, y_hat)
-        f1 = f1_score(y, y_hat, average='micro')
         plot_confusion_matrix(y, y_hat, labels=['Healthy', 'Mild', 'Moderate', 'Severe'])
-        print('test loss: {:05.2f}, test acc: {:.2f}, test f1: {:.2f}'.format(loss, acc, f1))
-        self.log_dict({'test loss': loss, 'test acc': acc, 'test f1': f1})
+        print('test loss: {:05.2f}, test acc: {:.2f}'.format(loss, acc))
+        self.log_dict({'test loss': loss, 'test acc': acc, 'y_prob': y_prob})
 
     def training_step(self, batch, batch_idx):
         x, y = batch
         logits = self.forward(x)
 
-        # networks targets are [0., 0.33, 0.66, 1.]  for grades [0., 1., 2., 3.]
+        # networks targets are [0., 0.33, 0.66, 1.] for grades [0., 1., 2., 3.]
         y_mapped = y / 3
         loss = self.loss(logits, y_mapped)
 
-        # get the predictions
+        # get the hard predictions
         y_hat = torch.round(self.sigmoid(logits) * 3).int().cpu().numpy()
         y = y.int().cpu().numpy()
 

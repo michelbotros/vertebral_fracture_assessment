@@ -6,7 +6,7 @@ xvertseg_dir = os.path.join(base_dir, 'datasets/xvertseg/')
 verse2019_dir = os.path.join(base_dir, 'datasets/verse2019/')
 
 # dir to store experiment
-run_name = 'ResNet10_grades_NO_WS'
+run_name = 'RN10'
 experiments_dir = os.path.join(base_dir, 'experiments/')
 
 # loading config
@@ -15,9 +15,9 @@ resolution = (1.0, 1.0, 1.0)
 
 # training config
 batch_size = 4
-lr = 1e-4
+lr = 1e-5
 epochs = 75
-weight_decay = 0.001
+weight_decay = 1e-5
 data_aug = True
 
 # wandb
