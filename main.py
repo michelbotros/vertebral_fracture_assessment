@@ -1,6 +1,6 @@
 from config import *
 from load_data import load_data, split_train_val_test
-from models import ResNetPl
+from models import CNN
 import torch
 from torch.utils.data import DataLoader
 import os
@@ -76,7 +76,7 @@ def main(train_mode, test_mode):
     train_set, val_set, test_set = split_train_val_test(imgs, msks, scores, patch_size, data_aug)
 
     # get the model
-    model = ResNetPl(lr=lr, weight_decay=weight_decay)
+    model = CNN(lr=lr, weight_decay=weight_decay)
 
     # for printing the summary
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")

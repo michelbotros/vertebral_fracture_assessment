@@ -6,7 +6,7 @@ xvertseg_dir = os.path.join(base_dir, 'datasets/xvertseg/')
 verse2019_dir = os.path.join(base_dir, 'datasets/verse2019/')
 
 # dir to store experiment
-run_name = 'RN10'
+run_name = 'CNN'
 experiments_dir = os.path.join(base_dir, 'experiments/')
 
 # loading config
