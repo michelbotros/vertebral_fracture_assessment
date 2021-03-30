@@ -1,5 +1,7 @@
 *
 
+!/docker/
+!/docker/**
 !/notebooks/
 !/notebooks/**
 !Dockerfile

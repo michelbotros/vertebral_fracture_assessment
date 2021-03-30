@@ -77,11 +77,11 @@ class Dataset(torch.utils.data.Dataset):
         Return a single sample: a patch of mask containing one vertebra and its grade"
         Applies data augmentation
         """
-        # get image, mask and score
+        # get image, mask, grade and case
         patch_img = self.img_patches[i]
         patch_msk = self.msk_patches[i]
-        y = self.grades[i]
-        y = torch.tensor(y, dtype=torch.float32).unsqueeze(0)
+        g = torch.tensor(self.grades[i], dtype=torch.long)
+        c = torch.tensor(self.cases[i], dtype=torch.long)
 
         if self.transforms:
             # define transforms
@@ -93,12 +93,12 @@ class Dataset(torch.utils.data.Dataset):
             patch_img = other_transforms(patch_img)
             x = spatial_transforms(np.stack((patch_img, patch_msk)))
             x = torch.tensor(x, dtype=torch.float32)
-            return x, y
+            return x, g, c
 
         # stack and to tensor
         x = np.stack((patch_img, patch_msk))
         x = torch.tensor(x, dtype=torch.float32)
-        return x, y
+        return x, g, c
 
 
 def split_train_val_test(imgs, msks, scores, patch_size, data_aug, train_percent=0.8, val_percent=0.1):

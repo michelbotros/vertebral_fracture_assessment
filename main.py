@@ -10,17 +10,12 @@ from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 import numpy as np
+import pandas as pd
 import argparse
-from torch.utils.data.sampler import WeightedRandomSampler
 import pickle
 
 
 def train(model, train_set, val_set):
-
-    # weighted sampling
-    # weights = 1 / np.unique(train_set.grades, return_counts=True)[1]
-    # sample_weights = np.array([weights[int(label)] for label in train_set.grades])
-    # train_sampler = WeightedRandomSampler(sample_weights, len(sample_weights))
 
     # initialize data loaders
     train_loader = DataLoader(train_set, batch_size=batch_size, num_workers=16, drop_last=True)
@@ -43,17 +38,16 @@ def train(model, train_set, val_set):
 
     # define checkpoint callback
     checkpoint_callback = ModelCheckpoint(dirpath=os.path.join(experiments_dir, run_name),
-                                          filename='{epoch:02d}_{step:03d}_{val loss:.2f}_{val acc:.2f}',
-                                          monitor='val acc', mode='max', save_top_k=5)
+                                          filename='{epoch:02d}_{step:03d}_{val loss:.2f}',
+                                          monitor='val loss', mode='min', save_top_k=5)
     # define trainer
     trainer = Trainer(
         logger=wandb_logger,
         callbacks=checkpoint_callback,
-        log_every_n_steps=5,
-        val_check_interval=75,
-        accelerator='dp',
-        gpus=2,
+        log_every_n_steps=25,
+        gpus=1,
         max_epochs=epochs,
+        limit_train_batches=0.25,
         progress_bar_refresh_rate=0
     )
 
@@ -75,8 +69,15 @@ def main(train_mode, test_mode):
     # split in train/val/test
     train_set, val_set, test_set = split_train_val_test(imgs, msks, scores, patch_size, data_aug)
 
+    # class weights for grades and cases
+    weights_grades = 1 / np.unique(train_set.grades, return_counts=True)[1]
+    weights_cases = 1 / np.unique(train_set.cases, return_counts=True)[1]
+
+    print('Class weights grades: {}'.format(weights_grades))
+    print('Class weights cases: {}'.format(weights_cases))
+
     # get the model
-    model = CNN(lr=lr, weight_decay=weight_decay)
+    model = CNN(lr=lr, weight_decay=weight_decay, weights_grades=weights_grades, weights_cases=weights_cases)
 
     # for printing the summary
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -88,16 +89,15 @@ def main(train_mode, test_mode):
 
         # use the best model just trained
         if test_mode:
-            test_loader = DataLoader(test_set, batch_size=1, num_workers=16, shuffle=False)
+            test_loader = DataLoader(test_set, batch_size=batch_size, num_workers=16, shuffle=False, drop_last=True)
             print('Testing model: {}'.format(trainer.checkpoint_callback.best_model_path))
 
             # get results on the test set
             results = trainer.test(test_dataloaders=test_loader, ckpt_path='best')
-            soft_preds = results[0]['y_prob']
 
-            # save soft predictions
-            with open(os.path.join(experiments_dir, run_name, 'soft_preds.npy'), 'wb') as f:
-                np.save(f, soft_preds)
+            # save predictions
+            pred_df = pd.DataFrame({'g_hat': results[0]['test g_hat'], 'c_hat': results[0]['test c_hat']})
+            pred_df.to_csv(os.path.join(experiments_dir, run_name, 'preds.csv'))
 
             # save test set as well
             with open(os.path.join(experiments_dir, run_name, 'test_set'), 'wb') as f:
