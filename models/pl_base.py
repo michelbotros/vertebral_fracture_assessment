@@ -6,49 +6,26 @@ import torch
 from wandb.sklearn import plot_confusion_matrix
 from sklearn.metrics import accuracy_score, cohen_kappa_score
 import torch.nn.functional as F
+from models.cnn import CNN
+from models.densenet import generate_model
 
 
-class CNN(pl.LightningModule):
+class Net(pl.LightningModule):
     """
-    CNN model for two sub-tasks: predicting grades and cases
+    Base PyTorch Lightning Net
     """
     def __init__(self, lr, weight_decay, weights_grades, weights_cases):
-        super(CNN, self).__init__()
+        super(Net, self).__init__()
         self.lr = lr
         self.weight_decay = weight_decay
-
-        # feature extraction
-        self.conv1 = self.conv_block(2, 32)
-        self.conv2 = self.conv_block(32, 64)
-        self.conv3 = self.conv_block(64, 128)
-        self.fc1 = nn.Linear(128 * 11 * 11 * 11, 256)
-
-        # classification heads for grades and cases
-        self.fc_g = nn.Linear(256, 4)
-        self.fc_c = nn.Linear(256, 4)
+        self.net = generate_model(model_depth=121)
 
         # weighted CCE
         self.loss_g = nn.CrossEntropyLoss(weight=torch.Tensor(weights_grades, device=self.device))
         self.loss_c = nn.CrossEntropyLoss(weight=torch.Tensor(weights_cases, device=self.device))
 
-    def conv_block(self, in_channels, out_channels):
-        conv_block = nn.Sequential(
-            nn.Conv3d(in_channels, out_channels, kernel_size=(5, 5, 5)),
-            nn.BatchNorm3d(out_channels),
-            nn.ReLU(),
-            nn.MaxPool3d((3, 3, 3), stride=2)
-        )
-        return conv_block
-
     def forward(self, x):
-        x = self.conv1(x)
-        x = self.conv2(x)
-        x = self.conv3(x)
-        x = x.view(-1, 128 * 11 * 11 * 11)
-        x = self.fc1(x)
-        g = self.fc_g(x)
-        c = self.fc_c(x)
-        return g, c
+        return self.net.forward(x)
 
     def accumulate_outputs(self, outputs):
         g = torch.hstack([output['g'] for output in outputs])

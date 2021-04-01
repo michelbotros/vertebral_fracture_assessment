@@ -1,6 +1,6 @@
 from config import *
 from load_data import load_data, split_train_val_test
-from models import CNN
+from models.pl_base import Net
 import torch
 from torch.utils.data import DataLoader
 import os
@@ -23,7 +23,8 @@ def train(model, train_set, val_set):
 
     # log everything
     os.environ["WANDB_API_KEY"] = wandb_key
-    wandb_logger = WandbLogger(project="Vertebral Fracture Classification", name=run_name, save_dir=experiments_dir)
+    wandb_logger = WandbLogger(project="Vertebral Fracture Classification", name=run_name, save_dir=experiments_dir,
+                               settings=wandb.Settings(start_method='fork'))
     wandb_logger.log_hyperparams({
         "batch_size": batch_size,
         "patch_size": patch_size,
@@ -32,14 +33,13 @@ def train(model, train_set, val_set):
         "data_aug": data_aug,
         "weight decay": weight_decay,
         "dropout": False,
-        "weighted sampling": False,
         "dataset": "xVertSeg, Verse2019",
     })
 
     # define checkpoint callback
     checkpoint_callback = ModelCheckpoint(dirpath=os.path.join(experiments_dir, run_name),
                                           filename='{epoch:02d}_{step:03d}_{val loss:.2f}',
-                                          monitor='val loss', mode='min', save_top_k=5)
+                                          monitor='val kappa_g', mode='max', save_top_k=5)
     # define trainer
     trainer = Trainer(
         logger=wandb_logger,
@@ -77,7 +77,7 @@ def main(train_mode, test_mode):
     print('Class weights cases: {}'.format(weights_cases))
 
     # get the model
-    model = CNN(lr=lr, weight_decay=weight_decay, weights_grades=weights_grades, weights_cases=weights_cases)
+    model = Net(lr=lr, weight_decay=weight_decay, weights_grades=weights_grades, weights_cases=weights_cases)
 
     # for printing the summary
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
