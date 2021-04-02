@@ -7,7 +7,7 @@ from wandb.sklearn import plot_confusion_matrix
 from sklearn.metrics import accuracy_score, cohen_kappa_score
 import torch.nn.functional as F
 from models.cnn import CNN
-from models.densenet import generate_model
+from models.resnet import generate_model
 
 
 class Net(pl.LightningModule):
@@ -18,11 +18,11 @@ class Net(pl.LightningModule):
         super(Net, self).__init__()
         self.lr = lr
         self.weight_decay = weight_decay
-        self.net = generate_model(model_depth=121)
+        self.net = CNN()
 
-        # weighted CCE
-        self.loss_g = nn.CrossEntropyLoss(weight=torch.Tensor(weights_grades, device=self.device))
-        self.loss_c = nn.CrossEntropyLoss(weight=torch.Tensor(weights_cases, device=self.device))
+        # non weighted CCE
+        self.loss_g = nn.CrossEntropyLoss()
+        self.loss_c = nn.CrossEntropyLoss()
 
     def forward(self, x):
         return self.net.forward(x)
@@ -79,7 +79,7 @@ class Net(pl.LightningModule):
         loss = loss_g + loss_c
         g_hat = np.argmax(F.log_softmax(logits_g, dim=1).cpu(), axis=1)
         c_hat = np.argmax(F.log_softmax(logits_c, dim=1).cpu(), axis=1)
-        self.log_dict({'val loss': loss.item()}, on_epoch=True, on_step=False)
+        self.log_dict({'val loss': loss.item(), 'val loss grade': loss_g, 'val loss case': loss_c}, on_epoch=True, on_step=False)
         return {'g': g, 'c': c, 'g_hat': g_hat, 'c_hat': c_hat}
 
     def test_step(self, batch, batch_idx):

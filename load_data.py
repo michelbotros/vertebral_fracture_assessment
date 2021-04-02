@@ -86,7 +86,7 @@ class Dataset(torch.utils.data.Dataset):
         if self.transforms:
             # define transforms
             spatial_transforms = Compose([RandRotate(prob=0.25, range_x=0.3, range_y=0.3, range_z=0, mode='nearest')])
-            other_transforms = Compose([RandGaussianNoise(prob=0.25, mean=np.mean(patch_img), std=0.5),
+            other_transforms = Compose([RandGaussianNoise(prob=0.25, mean=np.mean(patch_img), std=0.25),
                                         RandGaussianSmooth(prob=0.25, sigma_x=(0, 1.5), sigma_y=(0, 1.5), sigma_z=(0, 1.5))])
 
             # apply some on just the image, spatial transforms need to be applied to both

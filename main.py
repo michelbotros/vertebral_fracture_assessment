@@ -18,8 +18,8 @@ import pickle
 def train(model, train_set, val_set):
 
     # initialize data loaders
-    train_loader = DataLoader(train_set, batch_size=batch_size, num_workers=16, drop_last=True)
-    val_loader = DataLoader(val_set, batch_size=batch_size, num_workers=16, drop_last=True)
+    train_loader = DataLoader(train_set, batch_size=batch_size, num_workers=16, drop_last=True, shuffle=True)
+    val_loader = DataLoader(val_set, batch_size=batch_size, num_workers=16, drop_last=True, shuffle=True)
 
     # log everything
     os.environ["WANDB_API_KEY"] = wandb_key
@@ -39,7 +39,7 @@ def train(model, train_set, val_set):
     # define checkpoint callback
     checkpoint_callback = ModelCheckpoint(dirpath=os.path.join(experiments_dir, run_name),
                                           filename='{epoch:02d}_{step:03d}_{val loss:.2f}',
-                                          monitor='val kappa_g', mode='max', save_top_k=5)
+                                          monitor='val loss', mode='min', save_top_k=5)
     # define trainer
     trainer = Trainer(
         logger=wandb_logger,
@@ -47,7 +47,6 @@ def train(model, train_set, val_set):
         log_every_n_steps=25,
         gpus=1,
         max_epochs=epochs,
-        limit_train_batches=0.25,
         progress_bar_refresh_rate=0
     )
 
@@ -68,13 +67,6 @@ def main(train_mode, test_mode):
 
     # split in train/val/test
     train_set, val_set, test_set = split_train_val_test(imgs, msks, scores, patch_size, data_aug)
-
-    # class weights for grades and cases
-    weights_grades = 1 / np.unique(train_set.grades, return_counts=True)[1]
-    weights_cases = 1 / np.unique(train_set.cases, return_counts=True)[1]
-
-    print('Class weights grades: {}'.format(weights_grades))
-    print('Class weights cases: {}'.format(weights_cases))
 
     # get the model
     model = Net(lr=lr, weight_decay=weight_decay, weights_grades=weights_grades, weights_cases=weights_cases)
