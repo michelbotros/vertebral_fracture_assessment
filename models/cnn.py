@@ -9,18 +9,18 @@ class CNN(nn.Module):
     """
     def __init__(self):
         super(CNN, self).__init__()
+
         # feature extraction
         self.conv1 = self.conv_block(2, 32)
         self.conv2 = self.conv_block(32, 64)
         self.conv3 = self.conv_block(64, 128)
         self.conv4 = self.conv_block(128, 256)
         self.conv5 = self.conv_block(256, 512)
+        self.avgpool = nn.AdaptiveAvgPool3d((1, 1, 1))
 
         # classification heads for grades and cases
-        self.fc_g1 = nn.Linear(512 * 2 * 2 * 2, 1024)
-        self.fc_c1 = nn.Linear(512 * 2 * 2 * 2, 1024)
-        self.fc_g2 = nn.Linear(1024, 4)
-        self.fc_c2 = nn.Linear(1024, 4)
+        self.fc_c = nn.Linear(512, 4)
+        self.fc_g = nn.Linear(512, 4)
 
     def conv_block(self, in_channels, out_channels):
         conv_block = nn.Sequential(
@@ -38,12 +38,9 @@ class CNN(nn.Module):
         x = self.conv3(x)
         x = self.conv4(x)
         x = self.conv5(x)
-        x = x.view(-1, 512 * 2 * 2 * 2)
-
-        g = self.fc_g1(x)
-        g = self.fc_g2(g)
-
-        c = self.fc_c1(x)
-        c = self.fc_c2(c)
+        x = self.avgpool(x)
+        x = x.view(x.size(0), -1)
+        g = self.fc_g(x)
+        c = self.fc_c(x)
 
         return g, c

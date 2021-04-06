@@ -14,7 +14,7 @@ class Net(pl.LightningModule):
     """
     Base PyTorch Lightning Net
     """
-    def __init__(self, lr, weight_decay, weights_grades, weights_cases):
+    def __init__(self, lr, weight_decay):
         super(Net, self).__init__()
         self.lr = lr
         self.weight_decay = weight_decay

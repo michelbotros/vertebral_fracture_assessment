@@ -6,7 +6,7 @@ from tiger.resampling import resample_image, resample_mask
 from tiger.io import read_image, write_image
 from tiger.patches import PatchExtractor3D
 import torch
-from monai.transforms import Compose, RandGaussianNoise, RandRotate, RandGaussianSmooth
+from monai.transforms import Compose, RandGaussianNoise, RandRotate, RandGaussianSmooth, RandSpatialCrop
 
 
 class Dataset(torch.utils.data.Dataset):
@@ -22,7 +22,7 @@ class Dataset(torch.utils.data.Dataset):
         self.sources = []                      # (N, 1)         dataset of where the image was found
         self.IDS = []                          # (N, 1)         ID of the image, in which this vertebra is found
         self.vertebrae = []                    # (N, 1)         1-18 => T1-L6
-        self.patch_size = patch_size
+        self.patch_size = np.array(patch_size)
         self.transforms = transforms           # whether to apply transforms or not
 
         # the patch extraction
@@ -43,10 +43,10 @@ class Dataset(torch.utils.data.Dataset):
                     if label in np.unique(mask):
                         centre = tuple(np.mean(np.argwhere(mask == label), axis=0, dtype=int))
                         patch_extracter_img = PatchExtractor3D(images[row], pad_value=-1000)  # pad with air
-                        patch_img = patch_extracter_img.extract_cuboid(centre, self.patch_size)
+                        patch_img = patch_extracter_img.extract_cuboid(centre, self.patch_size + 16)
                         patch_img = np.clip(patch_img, -1000, 1500)
                         patch_extracter_msk = PatchExtractor3D(mask)
-                        patch_msk = patch_extracter_msk.extract_cuboid(centre, self.patch_size)
+                        patch_msk = patch_extracter_msk.extract_cuboid(centre, self.patch_size + 16)
                         patch_msk = np.where(patch_msk == label, patch_msk, 0)  # only contain this vertebra, keep label
 
                         # add score and info about this patch
@@ -83,20 +83,22 @@ class Dataset(torch.utils.data.Dataset):
         g = torch.tensor(self.grades[i], dtype=torch.long)
         c = torch.tensor(self.cases[i], dtype=torch.long)
 
-        if self.transforms:
-            # define transforms
-            spatial_transforms = Compose([RandRotate(prob=0.25, range_x=0.3, range_y=0.3, range_z=0, mode='nearest')])
-            other_transforms = Compose([RandGaussianNoise(prob=0.25, mean=np.mean(patch_img), std=0.25),
-                                        RandGaussianSmooth(prob=0.25, sigma_x=(0, 1.5), sigma_y=(0, 1.5), sigma_z=(0, 1.5))])
+        # define transforms
+        crop_transform = Compose([RandSpatialCrop(roi_size=self.patch_size, random_size=False)])
+        spatial_transforms = Compose([RandRotate(prob=0.25, range_x=0.3, range_y=0.3, range_z=0, mode='nearest', padding_mode='zeros')])
+        other_transforms = Compose([RandGaussianNoise(prob=0.25, mean=0, std=0.05),
+                                    RandGaussianSmooth(prob=0.25, sigma_x=(0.25, 0.75), sigma_y=(0.25, 0.75), sigma_z=(0.25, 0.75))])
 
+        if self.transforms:
             # apply some on just the image, spatial transforms need to be applied to both
             patch_img = other_transforms(patch_img)
-            x = spatial_transforms(np.stack((patch_img, patch_msk)))
+            x = crop_transform(np.stack((patch_img, patch_msk)))
+            x = spatial_transforms(x)
             x = torch.tensor(x, dtype=torch.float32)
             return x, g, c
 
-        # stack and to tensor
-        x = np.stack((patch_img, patch_msk))
+        # always apply crop on both image and mask
+        x = crop_transform(np.stack((patch_img, patch_msk)))
         x = torch.tensor(x, dtype=torch.float32)
         return x, g, c
 

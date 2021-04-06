@@ -32,7 +32,7 @@ def train(model, train_set, val_set):
         "epochs": epochs,
         "data_aug": data_aug,
         "weight decay": weight_decay,
-        "dropout": False,
+        "description": description,
         "dataset": "xVertSeg, Verse2019",
     })
 
@@ -69,7 +69,7 @@ def main(train_mode, test_mode):
     train_set, val_set, test_set = split_train_val_test(imgs, msks, scores, patch_size, data_aug)
 
     # get the model
-    model = Net(lr=lr, weight_decay=weight_decay, weights_grades=weights_grades, weights_cases=weights_cases)
+    model = Net(lr=lr, weight_decay=weight_decay)
 
     # for printing the summary
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
