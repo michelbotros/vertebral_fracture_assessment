@@ -6,12 +6,12 @@ xvertseg_dir = os.path.join(base_dir, 'datasets/xvertseg/')
 verse2019_dir = os.path.join(base_dir, 'datasets/verse2019/')
 
 # dir to store experiment
-run_name = 'CNN-128'
+run_name = 'CNN-96'
 description = 'input: image and only mask of vertebra to be assessed'
 experiments_dir = os.path.join(base_dir, 'experiments/')
 
 # loading config
-patch_size = (128, 128, 128)
+patch_size = (96, 96, 96)
 resolution = (1.0, 1.0, 1.0)
 
 # training config
