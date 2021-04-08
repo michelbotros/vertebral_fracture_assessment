@@ -6,7 +6,7 @@ xvertseg_dir = os.path.join(base_dir, 'datasets/xvertseg/')
 verse2019_dir = os.path.join(base_dir, 'datasets/verse2019/')
 
 # dir to store experiment
-run_name = 'CNN baseline'
+run_name = 'CNN-128'
 description = 'input: image and only mask of vertebra to be assessed'
 experiments_dir = os.path.join(base_dir, 'experiments/')
 
@@ -17,7 +17,7 @@ resolution = (1.0, 1.0, 1.0)
 # training config
 batch_size = 4
 lr = 1e-4
-epochs = 250
+epochs = 150
 weight_decay = 0.001
 data_aug = True
 

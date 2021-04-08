@@ -38,8 +38,8 @@ def train(model, train_set, val_set):
 
     # define checkpoint callback
     checkpoint_callback = ModelCheckpoint(dirpath=os.path.join(experiments_dir, run_name),
-                                          filename='{epoch:02d}_{step:03d}_{val loss:.2f}',
-                                          monitor='val loss', mode='min', save_top_k=5)
+                                          filename='{epoch:02d}_{step:03d}_{val loss grade:.2f}',
+                                          monitor='val loss grade', mode='min', save_top_k=5)
     # define trainer
     trainer = Trainer(
         logger=wandb_logger,
