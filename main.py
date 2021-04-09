@@ -73,7 +73,7 @@ def main(train_mode, test_mode):
 
     # for printing the summary
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    summary(model.to(device), input_size=(2, *patch_size), batch_size=batch_size)
+    summary(model.to(device), input_size=(1, *patch_size), batch_size=batch_size)
 
     # train
     if train_mode:
