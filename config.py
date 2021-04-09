@@ -6,8 +6,8 @@ xvertseg_dir = os.path.join(base_dir, 'datasets/xvertseg/')
 verse2019_dir = os.path.join(base_dir, 'datasets/verse2019/')
 
 # dir to store experiment
-run_name = 'CNN-96 only image'
-description = 'input: only image '
+run_name = 'CNN-96 vertebral mask'
+description = 'input: image, everything non vertebra masked out '
 experiments_dir = os.path.join(base_dir, 'experiments/')
 
 # loading config
