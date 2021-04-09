@@ -78,7 +78,7 @@ class Dataset(torch.utils.data.Dataset):
         Applies data augmentation
         """
         # get mask, grade and case
-        patch_msk = np.expand_dims(self.msk_patches[i], axis=0)
+        patch_img = np.expand_dims(self.img_patches[i], axis=0)
         g = torch.tensor(self.grades[i], dtype=torch.long)
         c = torch.tensor(self.cases[i], dtype=torch.long)
 
@@ -90,14 +90,14 @@ class Dataset(torch.utils.data.Dataset):
 
         if self.transforms:
             # apply some on just the image, spatial transforms need to be applied to both
-            x = other_transforms(patch_msk)
+            x = other_transforms(patch_img)
             x = crop_transform(x)
             x = spatial_transforms(x)
             x = torch.tensor(x, dtype=torch.float32)
             return x, g, c
 
         # always apply crop on both image and mask
-        x = crop_transform(patch_msk)
+        x = crop_transform(patch_img)
         x = torch.tensor(x, dtype=torch.float32)
         return x, g, c
 
