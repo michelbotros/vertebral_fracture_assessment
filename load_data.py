@@ -47,7 +47,7 @@ class Dataset(torch.utils.data.Dataset):
                         patch_img = np.clip(patch_img, -1000, 1500)
                         patch_extracter_msk = PatchExtractor3D(mask)
                         patch_msk = patch_extracter_msk.extract_cuboid(centre, self.patch_size + 16)
-                        patch_msk = np.where(patch_msk == label, 1, 0)  # only contain this vertebra, keep label
+                        patch_msk = np.where(patch_msk == label, patch_msk, 0)  # only contain this vertebra, keep label
 
                         # add score and info about this patch
                         self.img_patches.append(patch_img)
@@ -64,7 +64,7 @@ class Dataset(torch.utils.data.Dataset):
 
         # apply normalization => range [0, 1]
         self.img_patches = (self.img_patches + 1000) / 2500
-        self.msk_patches = self.msk_patches
+        self.msk_patches = self.msk_patches / 18
 
     def __len__(self):
         """
@@ -77,8 +77,9 @@ class Dataset(torch.utils.data.Dataset):
         Return a single sample: a patch of mask containing one vertebra and its grade"
         Applies data augmentation
         """
-        # get mask, grade and case
-        patch_img = np.expand_dims(self.img_patches[i] * self.msk_patches[i], axis=0)
+        # get image, mask, grade and case
+        patch_img = self.img_patches[i]
+        patch_msk = self.msk_patches[i]
         g = torch.tensor(self.grades[i], dtype=torch.long)
         c = torch.tensor(self.cases[i], dtype=torch.long)
 
@@ -90,14 +91,14 @@ class Dataset(torch.utils.data.Dataset):
 
         if self.transforms:
             # apply some on just the image, spatial transforms need to be applied to both
-            x = other_transforms(patch_img)
-            x = crop_transform(x)
+            patch_img = other_transforms(patch_img)
+            x = crop_transform(np.stack((patch_img, patch_msk)))
             x = spatial_transforms(x)
             x = torch.tensor(x, dtype=torch.float32)
             return x, g, c
 
         # always apply crop on both image and mask
-        x = crop_transform(patch_img)
+        x = crop_transform(np.stack((patch_img, patch_msk)))
         x = torch.tensor(x, dtype=torch.float32)
         return x, g, c
 

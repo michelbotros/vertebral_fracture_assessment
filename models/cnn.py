@@ -11,7 +11,7 @@ class CNN(nn.Module):
         super(CNN, self).__init__()
 
         # feature extraction
-        self.conv1 = self.conv_block(1, 32)
+        self.conv1 = self.conv_block(2, 32)
         self.conv2 = self.conv_block(32, 64)
         self.conv3 = self.conv_block(64, 128)
         self.conv4 = self.conv_block(128, 256)
