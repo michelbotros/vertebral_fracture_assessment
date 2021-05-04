@@ -26,13 +26,13 @@ class Dataset(torch.utils.data.Dataset):
         self.transforms = transforms           # whether to apply transforms or not
 
         # the patch extraction
-        for row, mask in enumerate(masks):
+        for row, mask in enumerate(tqdm(masks)):
             # get the dataset and id of this case
-            source = scores[row][0]
-            id = scores[row][1]
+            source = scores.iloc[row][0]
+            id = scores.iloc[row][1]
 
             # get the vert scores, 18 vertebrae, grade and case, need float to detect nans
-            vert_scores = scores[row][2:].reshape(18, 2).astype(float)
+            vert_scores = scores.iloc[row][2:].to_numpy().reshape(18, 2).astype(float)
 
             # find annotated labels in the score sheet
             for i, vert_score in enumerate(vert_scores):
@@ -153,19 +153,20 @@ def load_data(data_dir):
 
     # load images
     print('Loading images from {}...'.format(img_dir))
-    for i, path in enumerate(img_paths):
+    for i, path in enumerate(tqdm(img_paths[:100])):
         img, header = read_image(path)
         img = np.rot90(img, axes=(1, 2))
         imgs[i] = img
 
     # load masks
     print('Loading masks from {}...'.format(msk_dir))
-    for i, path in enumerate(msk_paths):
+    for i, path in enumerate(tqdm(msk_paths[:100])):
         msk, header = read_image(path)
         msk = np.rot90(msk, axes=(1, 2))
-        msk = np.where(msk > 7, msk - 7, 0)          # remove c vertebrae, shift labels: 0 => bg, 1-18 => L1-L6
+        msk = np.where(msk > 100, msk - 100, msk)      # if partially visible
+        msk = np.where(msk > 7, msk - 7, 0)          # remove c vertebrae, shift labels: 0 => bg, 1-18 => T1-L6
         msks[i] = msk
 
-    return imgs, msks, scores
+    return imgs[:100], msks[:100], scores
 
 
