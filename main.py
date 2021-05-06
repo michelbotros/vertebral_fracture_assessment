@@ -61,7 +61,7 @@ def main(train_mode, test_mode):
 
     # for printing the summary
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    # summary(model.to(device), input_size=(2, *patch_size), batch_size=batch_size)
+    summary(model.to(device), input_size=(2, *patch_size), batch_size=batch_size)
 
     # train then test
     if train_mode:
@@ -127,6 +127,5 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Training and testing pipeline for Vertebrae Fracture Detection.')
     parser.add_argument('--train', help='run in test mode', default=False)
     parser.add_argument('--test', help='run in test mode', default=False, action='store_true')
-    parser.add_argument('--gpus', help='how many gpus to use', default=1)
     args = parser.parse_args()
     main(args.train, args.test)
