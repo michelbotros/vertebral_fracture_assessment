@@ -5,31 +5,110 @@ from tiger.patches import PatchExtractor3D
 from tqdm.auto import tqdm
 import torch
 from scipy.ndimage import binary_dilation, generate_binary_structure, binary_opening
+import pandas as pd
+
+""""
+Mask approach
+"""
 
 
 class DatasetMask(torch.utils.data.Dataset):
-    def __init__(self, msks, patch_size):
+    """"
+    Dataset of corrupted and original patches. Corruption is done by removing healthy vertebrae at the center of the
+    patch.
+    """
+    def __init__(self, scores, masks, patch_size):
         self.original_masks = []
         self.corrupted_masks = []
 
-        for msk in msks:
-            m, z = get_sample_mask(msk, patch_size=patch_size)
-            self.original_masks.append(m)
-            self.corrupted_masks.append(z)
+        for row, mask in enumerate(masks):
+            vert_scores = scores[row][2:].reshape(18, 2).astype(float)
+            mask_unique = np.unique(mask)
+
+            for i, vert_score in enumerate(vert_scores):
+                if not (np.isnan(vert_score).any()):
+                    grade = vert_score[0]
+                    vert = i + 1
+
+                    # only add healthy ones that are also present in the mask
+                    if vert in mask_unique and grade == 0:
+                        centre = tuple(np.mean(np.argwhere(mask == vert), axis=0, dtype=int))
+                        patch_extracter_msk = PatchExtractor3D(mask)
+                        m = patch_extracter_msk.extract_cuboid(centre, patch_size)
+                        z = np.where(m == vert, 0, m > 0)      # remove this vert
+                        m = np.where(m > 0, 1, 0)              # make binary mask
+                        self.original_masks.append(m)
+                        self.corrupted_masks.append(z)
 
     def __len__(self):
         """
-        Returns N, the number of vertebrae in this dataset.
+        Returns N, the number of samples in this dataset.
         """
-        return len(self.orig_masks)
+        return len(self.original_masks)
 
     def __getitem__(self, ind):
         """"
         Return a single sample:
         """
-        i = torch.tensor(self.original_masks[ind])
-        m = torch.tensor(self.corrupted_masks[ind])
-        return i, m
+        m = torch.tensor(self.original_masks[ind], dtype=torch.float32).unsqueeze(0)
+        z = torch.tensor(self.corrupted_masks[ind], dtype=torch.float32).unsqueeze(0)
+        return m, z
+
+
+def split_train_val_test(msks, scores, patch_size, train_percent=0.8, val_percent=0.1):
+    """
+    Splits the loaded data into a train, validation and test set.
+    """
+    # make train and val split on image level
+    IDs = np.arange(len(msks))
+    np.random.seed(1993)
+    np.random.shuffle(IDs)
+
+    N = len(IDs)
+    n_train_end = int(train_percent * N)
+    n_val_end = int(val_percent * N) + n_train_end
+    train_ids = IDs[:n_train_end]
+    val_ids = IDs[n_train_end:n_val_end]
+    test_ids = IDs[n_val_end:]
+
+    # convert the scores to numpy, for indexing
+    np_scores = scores.to_numpy()
+
+    # apply split
+    print('Available cases: {} \ntrain: {}, val: {}, test: {}'.format(N, len(train_ids), len(val_ids), len(test_ids)))
+    print('Extracting patches...')
+    train_set = DatasetMask(np_scores[train_ids], msks[train_ids], patch_size)
+    val_set = DatasetMask(np_scores[val_ids], msks[val_ids], patch_size)
+    test_set = DatasetMask(np_scores[test_ids], msks[test_ids], patch_size)
+    print('train: {}, val: {}, test: {}'.format(train_set.__len__(), val_set.__len__(), test_set.__len__()))
+    return train_set, val_set, test_set
+
+
+def load_masks(data_dir, cases=120):
+    """
+    Loads masks and scores from a directory.
+    """
+    msk_dir = os.path.join(data_dir, 'masks_bodies')
+    msk_paths = [os.path.join(msk_dir, f) for f in sorted(os.listdir(msk_dir)) if 'resampled' in f][:cases]
+    scores = pd.read_csv(os.path.join(data_dir, 'scores.csv')).iloc[:cases]
+    msks = np.empty(len(msk_paths), dtype=object)
+
+    # load masks
+    print('Loading masks from {}...'.format(msk_dir))
+    for i, path in enumerate(tqdm(msk_paths)):
+        msk, header = read_image(path)
+        msk = np.rot90(msk, axes=(1, 2))
+        msk = np.where(msk > 100, 0, msk)             # if partially visible remove
+        msk = np.where(msk > 7, msk - 7, 0)           # remove c vertebrae, shift labels: 0 => bg, 1-18 => T1-L6
+        msks[i] = msk
+
+    return msks, scores
+
+
+""""
+Image and Mask approach
+Maybe useful for later.
+"""
 
 
 class Dataset(torch.utils.data.Dataset):
@@ -49,7 +128,7 @@ class Dataset(torch.utils.data.Dataset):
             # clip and normalize image
             min, max = -1000, 1500
             i = np.clip(i, min, max)
-            i = 2 * (i - min) / (max - min) - 1
+            i = (i - min) / (max - min)
             self.images.append(i)
             self.masks.append(m)
             self.z.append(z)
@@ -67,29 +146,7 @@ class Dataset(torch.utils.data.Dataset):
         i = torch.tensor(self.images[ind])
         m = torch.tensor(self.masks[ind])
         z = torch.tensor(self.z[ind])
-        stack = torch.stack((i, m, z))
-        return stack
-
-
-def get_sample_mask(msk, patch_size):
-    """
-    Given an segmentation masks of the spine.
-    extracts samples for the in painting task by randomly masking out a vertebra.
-
-    returns:
-    m: intact mask
-    z: corrupted mask
-    """
-    # randomly select a vertebra
-    verts = np.unique(msk)[1:]
-    random_vert = np.random.choice(verts)
-
-    # extract a patch from the mask
-    centre = tuple(np.mean(np.argwhere(msk == random_vert), axis=0, dtype=int))
-    patch_extracter_msk = PatchExtractor3D(msk)
-    m = patch_extracter_msk.extract_cuboid(centre, patch_size)
-    z = np.where(m == random_vert, 0, m)
-    return m, z
+        return i, m, z
 
 
 def get_sample(img, msk, patch_size, free_form=False):
@@ -118,8 +175,8 @@ def get_sample(img, msk, patch_size, free_form=False):
 
     if free_form:
         # dilate around mask, use structure to smooth so original shape is not given away
-        z = binary_opening(m, structure=generate_binary_structure(3, 3), iterations=7)
-        z = binary_dilation(z, structure=generate_binary_structure(3, 3), iterations=3)
+        z = binary_opening(m, structure=generate_binary_structure(3, 2), iterations=5)
+        z = binary_dilation(z, structure=generate_binary_structure(3, 1), iterations=7).astype('float')
     else:
         # compute bbox around vert
         x = np.any(m, axis=(0, 1))
@@ -143,7 +200,7 @@ def load_data(data_dir, cases=100):
     Note: currently loads resampled images.
     """
     img_dir = os.path.join(data_dir, 'images')
-    msk_dir = os.path.join(data_dir, 'masks')
+    msk_dir = os.path.join(data_dir, 'masks_bodies')
 
     # load all masks
     msk_paths = [os.path.join(msk_dir, f) for f in sorted(os.listdir(msk_dir)) if 'resampled' in f][:cases]

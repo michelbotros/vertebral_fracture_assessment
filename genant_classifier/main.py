@@ -101,6 +101,7 @@ def main(train_mode, test_mode):
 
         print('Testing on data from {}'.format(nlst_dir))
         nlst_imgs, nlst_msks, nlst_scores = load_data(nlst_dir)
+        nlst_scores = nlst_scores.to_numpy()
         print('Extracting patches...')
         test_set = Dataset(nlst_scores, nlst_imgs, nlst_msks, patch_size, transforms=False)
         print('Test set has {} vertebrae.'.format(test_set.__len__()))

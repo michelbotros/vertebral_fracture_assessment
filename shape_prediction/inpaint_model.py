@@ -1,8 +1,8 @@
 import torch
 from torch import nn
 import numpy as np
-from config import image_shape
 import torch.nn.functional as F
+from torch.nn.utils import spectral_norm
 
 
 class GatedConv(nn.Module):
@@ -43,12 +43,9 @@ class GatedConv(nn.Module):
 class InPaintNet(nn.Module):
     """
     InPaintNet (Generator) Net
-    input: two channel: image and mask
-    output: completed mask
-    TODO: (1) freeform => gated
     """
 
-    def __init__(self, ch=3):
+    def __init__(self, ch=1):
         super(InPaintNet, self).__init__()
 
         # 6x Gated Convolution

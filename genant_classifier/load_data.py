@@ -28,11 +28,11 @@ class Dataset(torch.utils.data.Dataset):
         # the patch extraction
         for row, mask in enumerate(tqdm(masks)):
             # get the dataset and id of this case
-            source = scores.iloc[row][0]
-            id = scores.iloc[row][1]
+            source = scores[row][0]
+            id = scores[row][1]
 
             # get the vert scores, 18 vertebrae, grade and case, need float to detect nans
-            vert_scores = scores.iloc[row][2:].to_numpy().reshape(18, 2).astype(float)
+            vert_scores = scores[row][2:].reshape(18, 2).astype(float)
 
             # find annotated labels in the score sheet
             for i, vert_score in enumerate(vert_scores):
