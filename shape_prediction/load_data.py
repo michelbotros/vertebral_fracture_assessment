@@ -6,6 +6,7 @@ from tqdm.auto import tqdm
 import torch
 from scipy.ndimage import binary_dilation, generate_binary_structure, binary_opening
 import pandas as pd
+from monai.transforms import Compose, RandRotate, RandZoom
 
 """"
 Mask approach
@@ -17,9 +18,10 @@ class DatasetMask(torch.utils.data.Dataset):
     Dataset of corrupted and original patches. Corruption is done by removing healthy vertebrae at the center of the
     patch.
     """
-    def __init__(self, scores, masks, patch_size):
+    def __init__(self, scores, masks, patch_size, transforms=False):
         self.original_masks = []
         self.corrupted_masks = []
+        self.transforms = transforms
 
         for row, mask in enumerate(masks):
             vert_scores = scores[row][2:].reshape(18, 2).astype(float)
@@ -50,9 +52,22 @@ class DatasetMask(torch.utils.data.Dataset):
         """"
         Return a single sample:
         """
-        m = torch.tensor(self.original_masks[ind], dtype=torch.float32).unsqueeze(0)
-        z = torch.tensor(self.corrupted_masks[ind], dtype=torch.float32).unsqueeze(0)
-        return m, z
+        m = self.original_masks[ind]
+        z = self.corrupted_masks[ind]
+
+        if self.transforms:
+            # apply transform on both original and corruption
+            spatial_transforms = Compose([RandZoom(prob=0.3, min_zoom=0.75, max_zoom=1.25, mode='trilinear', padding_mode='minimum'),
+                                          RandRotate(prob=0.3, range_x=0.3, range_y=0.3, range_z=0, mode="bilinear", padding_mode='zeros')])
+
+            x = spatial_transforms(np.stack((m, z)))
+            m_trans = torch.tensor(x[0], dtype=torch.float32).unsqueeze(0)
+            z_trans = torch.tensor(x[1], dtype=torch.float32).unsqueeze(0)
+            return m_trans, z_trans
+        else:
+            m = torch.tensor(m, dtype=torch.float32).unsqueeze(0)
+            z = torch.tensor(z, dtype=torch.float32).unsqueeze(0)
+            return m, z
 
 
 def split_train_val_test(msks, scores, patch_size, train_percent=0.8, val_percent=0.1):
@@ -77,7 +92,7 @@ def split_train_val_test(msks, scores, patch_size, train_percent=0.8, val_percen
     # apply split
     print('Available cases: {} \ntrain: {}, val: {}, test: {}'.format(N, len(train_ids), len(val_ids), len(test_ids)))
     print('Extracting patches...')
-    train_set = DatasetMask(np_scores[train_ids], msks[train_ids], patch_size)
+    train_set = DatasetMask(np_scores[train_ids], msks[train_ids], patch_size, transforms=True)
     val_set = DatasetMask(np_scores[val_ids], msks[val_ids], patch_size)
     test_set = DatasetMask(np_scores[test_ids], msks[test_ids], patch_size)
     print('train: {}, val: {}, test: {}'.format(train_set.__len__(), val_set.__len__(), test_set.__len__()))
@@ -95,7 +110,7 @@ def load_masks(data_dir, cases=120):
 
     # load masks
     print('Loading masks from {}...'.format(msk_dir))
-    for i, path in enumerate(tqdm(msk_paths)):
+    for i, path in enumerate(msk_paths):
         msk, header = read_image(path)
         msk = np.rot90(msk, axes=(1, 2))
         msk = np.where(msk > 100, 0, msk)             # if partially visible remove

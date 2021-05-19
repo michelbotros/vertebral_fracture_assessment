@@ -64,8 +64,6 @@ class UNet(nn.Module):
         self.up3 = UpBlock(init_filters*2, init_filters)
         self.up4 = UpBlock(init_filters, in_channels)
 
-        # self.final_conv = nn.Conv3d(in_channels, in_channels, kernel_size=1)
-
     def forward(self, x):
         x = self.down1(x)
         x = self.down2(x)
@@ -75,5 +73,4 @@ class UNet(nn.Module):
         x = self.up2(x)
         x = self.up3(x)
         x = self.up4(x)
-        # x = self.final_conv(x)
         return x

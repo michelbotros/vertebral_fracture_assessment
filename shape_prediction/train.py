@@ -32,10 +32,6 @@ def train(n_epochs, batch_size, lr, val_percent=0.1):
     print('Saving experiment at: {}'.format(run_dir))
     os.mkdir(run_dir)
 
-    # save test set for convenience
-    with open(os.path.join(run_dir, 'test_set'), 'wb') as f:
-        pickle.dump(test_set, f, protocol=pickle.HIGHEST_PROTOCOL)
-
     # initialize data loaders
     train_loader = DataLoader(train_set, batch_size=batch_size, num_workers=16, shuffle=True)
     val_loader = DataLoader(val_set, batch_size=batch_size, num_workers=16, shuffle=True)
