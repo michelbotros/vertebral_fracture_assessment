@@ -4,14 +4,12 @@ import argparse
 from torch.utils.data import DataLoader
 import torch
 import torch.nn as nn
-from load_data import load_masks, Dataset, DatasetMask, split_train_val_test
-from inpaint_model import InPaintNet, Critic
+from load_data import load_masks, DatasetMask, split_train_val_test
 from unet import UNet
 from config import *
 from torchsummary import summary
 import torch.optim as optim
 import wandb
-import pickle
 
 
 def train(n_epochs, batch_size, lr, val_percent=0.1):
@@ -21,7 +19,7 @@ def train(n_epochs, batch_size, lr, val_percent=0.1):
 
     # construct UNet and print summary
     unet = UNet().to(device)
-    summary(unet, input_size=(1, *patch_size), batch_size=1)
+    # summary(unet, input_size=(4, *patch_size), batch_size=batch_size)
 
     # load data
     masks, scores = load_masks(verse2019_dir)
@@ -53,58 +51,48 @@ def train(n_epochs, batch_size, lr, val_percent=0.1):
         train_loss = 0.0
         val_loss = 0.0
 
-        for m, z in train_loader:      # m is complete mask, z is incomplete mask
+        for x, y in train_loader:  # x is 4 input channels with neighbours, y is healthy vert to be predicted
             # clear gradients
             optimizer.zero_grad()
 
             # forward batch
-            m_pred = unet.forward(z.to(device))
-
-            # extract middle, for which a prediction is made, from the complete mask
-            start = (patch_size[-1] - m_pred.shape[-1]) // 2
-            end = start + m_pred.shape[-1]
-            m_true = m[:, :, start:end, start:end, start:end].to(device)
+            y_pred = unet.forward(x.to(device))
 
             # compute loss & update
-            loss = criterion(m_pred, m_true)
+            loss = criterion(y_pred, y.to(device))
             loss.backward()
             optimizer.step()
             train_loss += loss.item()
 
         # validate
         with torch.no_grad():
-            for m, z in val_loader:
+            for x, y in val_loader:
 
                 # forward batch
-                m_pred = unet.forward(z.to(device))
-
-                # extract middle, for which a prediction is made, from the complete mask
-                start = (patch_size[-1] - m_pred.shape[-1]) // 2
-                end = start + m_pred.shape[-1]
-                m_true = m[:, :, start:end, start:end, start:end].to(device)
+                y_pred = unet.forward(x.to(device))
 
                 # compute loss & update
-                loss = criterion(m_pred, m_true)
+                loss = criterion(y_pred, y.to(device))
                 val_loss += loss.item()
 
         # log & print stats
         avg_train_loss = train_loss / len(train_loader)
         avg_val_loss = val_loss / len(val_loader)
 
-        print('Epoch {}, train loss: {:.2f}, val loss: {:.2f}'.format(epoch, avg_train_loss, avg_val_loss))
+        print('Epoch {}, train loss: {:.3f}, val loss: {:.3f}'.format(epoch, avg_train_loss, avg_val_loss))
         wandb.log({'train loss': avg_train_loss, 'val loss': avg_val_loss})
 
         # save best
         if avg_val_loss < min_val:
             torch.save(unet.state_dict(),
-                       os.path.join(run_dir, 'best_model_epoch_{}_loss_{:.2f}.pt'.format(epoch, avg_val_loss)))
+                       os.path.join(run_dir, 'best_model_epoch_{}_loss_{:.3f}.pt'.format(epoch, avg_val_loss)))
             min_val = avg_val_loss
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--n_epochs", type=int, default=100, help="number of epochs of training")
-    parser.add_argument("--batch_size", type=int, default=1, help="size of the batches")
+    parser.add_argument("--batch_size", type=int, default=10, help="size of the batches")
     parser.add_argument("--lr", type=float, default=1e-4, help="learning rate")
     parser.add_argument("--val_percent", type=float, default=0.1, help="percentage to use for validation")
     args = parser.parse_args()
