@@ -132,7 +132,7 @@ def split_train_val_test(imgs, msks, scores, patch_size, data_aug, train_percent
     return train_set, val_set, test_set
 
 
-def load_data(data_dir):
+def load_data(data_dir, cases=120):
     """"
     Loads images, masks and scores from a directory (on image level).
     Note: currently loads resampled images.
@@ -141,7 +141,7 @@ def load_data(data_dir):
     msk_dir = os.path.join(data_dir, 'masks')
 
     # load all masks
-    msk_paths = [os.path.join(msk_dir, f) for f in sorted(os.listdir(msk_dir)) if 'resampled' in f]
+    msk_paths = [os.path.join(msk_dir, f) for f in sorted(os.listdir(msk_dir)) if 'resampled' in f][:cases]
     msk_ids = [f.split('/')[-1].split('.')[0] for f in msk_paths]
 
     # only load the images that are also present in the masks
@@ -149,24 +149,24 @@ def load_data(data_dir):
 
     imgs = np.empty(len(img_paths), dtype=object)
     msks = np.empty(len(msk_paths), dtype=object)
-    scores = pd.read_csv(os.path.join(data_dir, 'scores.csv'))
+    scores = pd.read_csv(os.path.join(data_dir, 'scores.csv')).iloc[:cases]
 
     # load images
     print('Loading images from {}...'.format(img_dir))
-    for i, path in enumerate(tqdm(img_paths[:100])):
+    for i, path in enumerate(tqdm(img_paths)):
         img, header = read_image(path)
         img = np.rot90(img, axes=(1, 2))
         imgs[i] = img
 
     # load masks
     print('Loading masks from {}...'.format(msk_dir))
-    for i, path in enumerate(tqdm(msk_paths[:100])):
+    for i, path in enumerate(tqdm(msk_paths)):
         msk, header = read_image(path)
         msk = np.rot90(msk, axes=(1, 2))
         msk = np.where(msk > 100, msk - 100, msk)      # if partially visible
         msk = np.where(msk > 7, msk - 7, 0)          # remove c vertebrae, shift labels: 0 => bg, 1-18 => T1-L6
         msks[i] = msk
 
-    return imgs[:100], msks[:100], scores
+    return imgs, msks, scores
 
 

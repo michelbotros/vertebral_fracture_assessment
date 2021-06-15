@@ -13,15 +13,19 @@ class DatasetMask(torch.utils.data.Dataset):
     Dataset of samples (x, y)
     x: the input, multiple vertebrae in diff channels shape = (context=2, patch_size, patch_size, patch_size)
     y: the output, shape to be predicted shape = (1, patch_size, patch_size, patch_size)
-
     """
-    def __init__(self, scores, masks, patch_size, context=2, transforms=False):
+    def __init__(self, scores, masks, patch_size, healthy_only=True, context=2, transforms=False):
         self.x = []                            # the input: multiple vertebrae in diff channels (channel, patch_size, patch_size, patch_size)
         self.y = []                            # the output: predicted shape of the one left out in the middle of the input
+        self.g = []                            # the grade of this sample
         self.transforms = transforms           # whether to apply data aug
         self.context = context                 # how many neighbouring vertebrae to use as input
+        self.max_grade = 0 if healthy_only else 3
+        self.IDS = []
 
         for row, mask in enumerate(tqdm(masks)):
+            id = scores[row][1]
+
             # get the scores for every vert
             vert_scores = scores[row][2:].reshape(18, 2).astype(float)
 
@@ -35,7 +39,7 @@ class DatasetMask(torch.utils.data.Dataset):
                     vert = i + 1
 
                     # for the ones that are healthy and present in the mask => construct sample (x, y)
-                    if vert in verts_present and grade == 0:
+                    if vert in verts_present and grade <= self.max_grade:
                         x = np.zeros((context*2, *patch_size))
                         y = np.expand_dims(patches[np.where(verts_present == vert)[0][0]], axis=0)
 
@@ -48,6 +52,8 @@ class DatasetMask(torch.utils.data.Dataset):
                         # add sample
                         self.x.append(x)
                         self.y.append(y)
+                        self.g.append(grade)
+                        self.IDS.append((id, vert))
 
     def extract_vertebrae(self, mask, patch_size):
         """
@@ -79,16 +85,17 @@ class DatasetMask(torch.utils.data.Dataset):
         """
         x = torch.tensor(self.x[i], dtype=torch.float32)
         y = torch.tensor(self.y[i], dtype=torch.float32)
-        return x, y
+        g = torch.tensor(self.g[i], dtype=torch.float32)
+        return x, y, g
 
 
-def split_train_val_test(msks, scores, patch_size, train_percent=0.8, val_percent=0.1):
+def split_train_val_test(msks, scores, patch_size, train_percent=0.8, val_percent=0.1, healthy_only=True):
     """
     Splits the loaded data into a train, validation and test set.
     """
     # make train and val split on image level
     IDs = np.arange(len(msks))
-    np.random.seed(1993)
+    np.random.seed(16051993)
     np.random.shuffle(IDs)
 
     N = len(IDs)
@@ -98,6 +105,8 @@ def split_train_val_test(msks, scores, patch_size, train_percent=0.8, val_percen
     val_ids = IDs[n_train_end:n_val_end]
     test_ids = IDs[n_val_end:]
 
+    print('Test IDs: {}'.format(test_ids))
+
     # convert the scores to numpy, for indexing
     np_scores = scores.to_numpy()
 
@@ -106,23 +115,30 @@ def split_train_val_test(msks, scores, patch_size, train_percent=0.8, val_percen
     print('Extracting patches...')
     train_set = DatasetMask(np_scores[train_ids], msks[train_ids], patch_size, transforms=True)
     val_set = DatasetMask(np_scores[val_ids], msks[val_ids], patch_size)
-    test_set = DatasetMask(np_scores[test_ids], msks[test_ids], patch_size)
+    test_set = DatasetMask(np_scores[test_ids], msks[test_ids], patch_size, healthy_only=healthy_only)
     print('train: {}, val: {}, test: {}'.format(train_set.__len__(), val_set.__len__(), test_set.__len__()))
     return train_set, val_set, test_set
 
 
-def load_masks(data_dir, cases=120):
+def load_masks(data_dir, cases=100):
     """
     Loads masks and scores from a directory.
     """
-    msk_dir = os.path.join(data_dir, 'masks_bodies')
-    msk_paths = [os.path.join(msk_dir, f) for f in sorted(os.listdir(msk_dir)) if 'resampled' in f][:cases]
-    scores = pd.read_csv(os.path.join(data_dir, 'scores.csv')).iloc[:cases]
-    msks = np.empty(len(msk_paths), dtype=object)
+    # only the clean masks
+    msk_clean_dir = os.path.join(data_dir, 'masks_bodies_cleaned')
+    msk_clean_paths = [os.path.join(msk_clean_dir, f) for f in sorted(os.listdir(msk_clean_dir)) if 'mha' in f][:cases]
+    clean_masks_ids = [int(f.split('_')[-2][-3:]) for f in msk_clean_paths]
+
+    # get only the scores of cleaned masks
+    scores = pd.read_csv(os.path.join(data_dir, 'scores.csv'))
+    scores = scores[scores['ID'].isin(clean_masks_ids)]
+
+    # store masks in array
+    msks = np.empty(len(msk_clean_paths), dtype=object)
 
     # load masks
-    print('Loading masks from {}...'.format(msk_dir))
-    for i, path in enumerate(tqdm(msk_paths)):
+    print('Loading masks from {}...'.format(msk_clean_dir))
+    for i, path in enumerate(tqdm(msk_clean_paths)):
         msk, header = read_image(path)
         msk = np.rot90(msk, axes=(1, 2))
         msk = np.where(msk > 100, 0, msk)             # if partially visible remove

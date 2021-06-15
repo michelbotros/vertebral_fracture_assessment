@@ -51,7 +51,7 @@ def train(n_epochs, batch_size, lr, val_percent=0.1):
         train_loss = 0.0
         val_loss = 0.0
 
-        for x, y in train_loader:  # x is 4 input channels with neighbours, y is healthy vert to be predicted
+        for x, y, g in train_loader:  # x is 4 input channels with neighbours, y is healthy vert to be predicted
             # clear gradients
             optimizer.zero_grad()
 
@@ -66,7 +66,7 @@ def train(n_epochs, batch_size, lr, val_percent=0.1):
 
         # validate
         with torch.no_grad():
-            for x, y in val_loader:
+            for x, y, g in val_loader:
 
                 # forward batch
                 y_pred = unet.forward(x.to(device))
