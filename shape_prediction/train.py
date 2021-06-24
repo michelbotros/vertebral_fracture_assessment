@@ -10,6 +10,7 @@ from config import *
 from torchsummary import summary
 import torch.optim as optim
 import wandb
+from tiger.torch import SigmoidDiceLoss
 
 
 def train(n_epochs, batch_size, lr, val_percent=0.1):
@@ -35,7 +36,8 @@ def train(n_epochs, batch_size, lr, val_percent=0.1):
     val_loader = DataLoader(val_set, batch_size=batch_size, num_workers=16, shuffle=True)
 
     # define loss and optimizer
-    criterion = nn.BCEWithLogitsLoss()
+    bce = nn.BCEWithLogitsLoss()
+    dice = SigmoidDiceLoss()
     optimizer = optim.Adam(unet.parameters(), lr=lr)
 
     # logging with wandb
@@ -52,6 +54,7 @@ def train(n_epochs, batch_size, lr, val_percent=0.1):
         val_loss = 0.0
 
         for x, y, g in train_loader:  # x is 4 input channels with neighbours, y is healthy vert to be predicted
+
             # clear gradients
             optimizer.zero_grad()
 
@@ -59,7 +62,7 @@ def train(n_epochs, batch_size, lr, val_percent=0.1):
             y_pred = unet.forward(x.to(device))
 
             # compute loss & update
-            loss = criterion(y_pred, y.to(device))
+            loss = bce(y_pred, y.to(device)) + dice(torch.sigmoid(y_pred), y.to(device))
             loss.backward()
             optimizer.step()
             train_loss += loss.item()
@@ -72,7 +75,7 @@ def train(n_epochs, batch_size, lr, val_percent=0.1):
                 y_pred = unet.forward(x.to(device))
 
                 # compute loss & update
-                loss = criterion(y_pred, y.to(device))
+                loss = bce(y_pred, y.to(device)) + dice(torch.sigmoid(y_pred), y.to(device))
                 val_loss += loss.item()
 
         # log & print stats
@@ -91,7 +94,7 @@ def train(n_epochs, batch_size, lr, val_percent=0.1):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--n_epochs", type=int, default=100, help="number of epochs of training")
+    parser.add_argument("--n_epochs", type=int, default=50, help="number of epochs of training")
     parser.add_argument("--batch_size", type=int, default=10, help="size of the batches")
     parser.add_argument("--lr", type=float, default=1e-4, help="learning rate")
     parser.add_argument("--val_percent", type=float, default=0.1, help="percentage to use for validation")
