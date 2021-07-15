@@ -9,7 +9,7 @@ nlst_dir = os.path.join(base_dir, 'datasets/nlst/')
 # dir to store experiment
 run_name = 'CNN-96'
 description = 'input: image and only mask of vertebra to be assessed'
-experiments_dir = os.path.join(base_dir, 'experiments/')
+experiments_dir = os.path.join(base_dir, 'experiments', 'genant_classifier')
 
 # loading config
 patch_size = (96, 96, 96)

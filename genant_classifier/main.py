@@ -100,12 +100,16 @@ def main(train_mode, test_mode):
         model = model.load_from_checkpoint(model_path, lr=lr, weight_decay=weight_decay)
 
         print('Testing on data from {}'.format(nlst_dir))
-        nlst_imgs, nlst_msks, nlst_scores = load_data(nlst_dir)
+        nlst_imgs, nlst_msks, nlst_scores = load_data(nlst_dir, cases=110)
         nlst_scores = nlst_scores.to_numpy()
         print('Extracting patches...')
         test_set = Dataset(nlst_scores, nlst_imgs, nlst_msks, patch_size, transforms=False)
         print('Test set has {} vertebrae.'.format(test_set.__len__()))
         test_loader = DataLoader(test_set, batch_size=1, num_workers=16, shuffle=False, drop_last=False)
+
+        # get IDS and vertebra label of the samples in the test set
+        ids = test_set.IDS
+        verts = [v + 7 for v in test_set.vertebrae]
 
         # log everything
         os.environ["WANDB_API_KEY"] = wandb_key
@@ -116,12 +120,12 @@ def main(train_mode, test_mode):
         results = trainer.test(model, test_dataloaders=test_loader)
 
         # save predictions
-        pred_df = pd.DataFrame({'g_hat': results[0]['test g_hat'], 'c_hat': results[0]['test c_hat']})
-        pred_df.to_csv(os.path.join(experiments_dir, run_name, 'nlst_preds.csv'))
+        pred_df = pd.DataFrame({'ID': ids, 'vert': verts, 'grade': results[0]['test g_hat']})
+        pred_df.to_csv(os.path.join(experiments_dir, run_name, 'nlst_grades.csv'), index=False)
 
         # save test set as well
-        with open(os.path.join(experiments_dir, run_name, 'nlst_test_set'), 'wb') as f:
-            pickle.dump(test_set, f)
+        # with open(os.path.join(experiments_dir, run_name, 'nlst_test_set'), 'wb') as f:
+        #     pickle.dump(test_set, f)
 
 
 if __name__ == '__main__':
