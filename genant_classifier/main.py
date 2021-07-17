@@ -94,7 +94,7 @@ def main(train_mode, test_mode):
             with open(os.path.join(experiments_dir, run_name, 'test_set'), 'wb') as f:
                 pickle.dump(test_set, f)
     else:
-        model_name = 'epoch=110_step=25973_val loss grade=0.34.ckpt'
+        model_name = 'epoch=55_step=13103_val loss grade=0.37.ckpt'
         model_path = os.path.join(experiments_dir, run_name, model_name)
         print('Loading model from {}'.format(model_path))
         model = model.load_from_checkpoint(model_path, lr=lr, weight_decay=weight_decay)

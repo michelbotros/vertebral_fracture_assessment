@@ -10,7 +10,6 @@ from config import *
 from torchsummary import summary
 import torch.optim as optim
 import wandb
-from tiger.torch import SigmoidDiceLoss
 
 
 def train(n_epochs, batch_size, lr, val_percent=0.1):
@@ -20,10 +19,14 @@ def train(n_epochs, batch_size, lr, val_percent=0.1):
 
     # construct UNet and print summary
     unet = UNet().to(device)
-    # summary(unet, input_size=(4, *patch_size), batch_size=batch_size)
 
     # load data
-    masks, scores = load_masks(verse2019_dir)
+    xvertseg_masks, xvertseg_scores = load_masks(xvertseg_dir)
+    verse2019_masks, verse2019_scores = load_masks(verse2019_dir)
+
+    # stack data sets together
+    masks = np.concatenate((xvertseg_masks, verse2019_masks))
+    scores = xvertseg_scores.append(verse2019_scores, ignore_index=True)
 
     # make train/val split
     train_set, val_set, test_set = split_train_val_test(masks, scores, patch_size, val_percent=val_percent)
@@ -37,12 +40,11 @@ def train(n_epochs, batch_size, lr, val_percent=0.1):
 
     # define loss and optimizer
     bce = nn.BCEWithLogitsLoss()
-    dice = SigmoidDiceLoss()
     optimizer = optim.Adam(unet.parameters(), lr=lr)
 
     # logging with wandb
     os.environ["WANDB_API_KEY"] = wandb_key
-    wandb.init(project="Shape Prediction")
+    wandb.init(project="Shape Prediction V2")
     wandb.run.name = run_name
 
     # keep track of best validation score, for saving best model
@@ -62,7 +64,7 @@ def train(n_epochs, batch_size, lr, val_percent=0.1):
             y_pred = unet.forward(x.to(device))
 
             # compute loss & update
-            loss = bce(y_pred, y.to(device)) + dice(torch.sigmoid(y_pred), y.to(device))
+            loss = bce(y_pred, y.to(device))
             loss.backward()
             optimizer.step()
             train_loss += loss.item()
@@ -75,7 +77,7 @@ def train(n_epochs, batch_size, lr, val_percent=0.1):
                 y_pred = unet.forward(x.to(device))
 
                 # compute loss & update
-                loss = bce(y_pred, y.to(device)) + dice(torch.sigmoid(y_pred), y.to(device))
+                loss = bce(y_pred, y.to(device))
                 val_loss += loss.item()
 
         # log & print stats
@@ -94,7 +96,7 @@ def train(n_epochs, batch_size, lr, val_percent=0.1):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--n_epochs", type=int, default=50, help="number of epochs of training")
+    parser.add_argument("--n_epochs", type=int, default=500, help="number of epochs of training")
     parser.add_argument("--batch_size", type=int, default=10, help="size of the batches")
     parser.add_argument("--lr", type=float, default=1e-4, help="learning rate")
     parser.add_argument("--val_percent", type=float, default=0.1, help="percentage to use for validation")

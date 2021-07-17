@@ -132,7 +132,7 @@ def split_train_val_test(imgs, msks, scores, patch_size, data_aug, train_percent
     return train_set, val_set, test_set
 
 
-def load_data(data_dir, cases=100):
+def load_data(data_dir, cases=120):
     """"
     Loads images, masks and scores from a directory (on image level).
     Note: currently loads resampled images.
@@ -142,10 +142,12 @@ def load_data(data_dir, cases=100):
 
     # load all masks
     msk_paths = [os.path.join(msk_dir, f) for f in sorted(os.listdir(msk_dir)) if 'resampled' in f][:cases]
-    msk_ids = [f.split('/')[-1].split('_')[1][:-4] for f in msk_paths]         # (!) for NLST
+    # msk_ids = [f.split('/')[-1].split('_')[1][:-4] for f in msk_paths]            # (!) for NLST
+    msk_ids = [f.split('/')[-1].split('.')[0][-3:] for f in msk_paths]              # (!) for xvertseg and verse
 
     # only load the images that are also present in the masks
-    img_paths = [os.path.join(img_dir, f) for f in sorted(os.listdir(img_dir)) if any(id in f for id in msk_ids)]
+    img_paths = [os.path.join(img_dir, f) for f in sorted(os.listdir(img_dir)) if any(id in f for id in msk_ids)
+                 and 'resampled' in f]
 
     imgs = np.empty(len(img_paths), dtype=object)
     msks = np.empty(len(msk_paths), dtype=object)

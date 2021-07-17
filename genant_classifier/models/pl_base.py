@@ -18,7 +18,7 @@ class Net(pl.LightningModule):
         super(Net, self).__init__()
         self.lr = lr
         self.weight_decay = weight_decay
-        self.net = CNN()
+        self.net = generate_model(model_depth=50)
 
         # non weighted CCE
         self.loss_g = nn.CrossEntropyLoss()

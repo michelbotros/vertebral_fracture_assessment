@@ -93,17 +93,23 @@ def split_train_val_test(msks, scores, patch_size, train_percent=0.8, val_percen
     """
     Splits the loaded data into a train, validation and test set.
     """
+    # neck images
+    rm_ids = [201, 202, 205, 207, 208, 209, 212, 214, 215, 221, 223, 225, 226, 227, 230, 232, 235, 239, 242, 243]
+
+    # indexes to remove
+    rm_inds = list(scores[scores['ID'].isin(rm_ids)].index)
+
     # make train and val split on image level
     IDs = np.arange(len(msks))
-    np.random.seed(16051993)
+    np.random.seed(1993)
     np.random.shuffle(IDs)
 
     N = len(IDs)
     n_train_end = int(train_percent * N)
     n_val_end = int(val_percent * N) + n_train_end
-    train_ids = IDs[:n_train_end]
-    val_ids = IDs[n_train_end:n_val_end]
-    test_ids = IDs[n_val_end:]
+    train_ids = [x for x in IDs[:n_train_end] if x not in rm_inds]
+    val_ids = [x for x in IDs[n_train_end:n_val_end] if x not in rm_inds]
+    test_ids = [x for x in IDs[n_val_end:] if x not in rm_inds]
 
     print('Test IDs: {}'.format(test_ids))
 
@@ -120,18 +126,16 @@ def split_train_val_test(msks, scores, patch_size, train_percent=0.8, val_percen
     return train_set, val_set, test_set
 
 
-def load_masks(data_dir, cases=100):
+def load_masks(data_dir, cases=120):
     """
     Loads masks and scores from a directory.
     """
     # only the clean masks
     msk_clean_dir = os.path.join(data_dir, 'masks_bodies_cleaned')
     msk_clean_paths = [os.path.join(msk_clean_dir, f) for f in sorted(os.listdir(msk_clean_dir)) if 'mha' in f][:cases]
-    clean_masks_ids = [int(f.split('_')[-2][-3:]) for f in msk_clean_paths]
 
     # get only the scores of cleaned masks
     scores = pd.read_csv(os.path.join(data_dir, 'scores.csv'))
-    scores = scores[scores['ID'].isin(clean_masks_ids)]
 
     # store masks in array
     msks = np.empty(len(msk_clean_paths), dtype=object)
