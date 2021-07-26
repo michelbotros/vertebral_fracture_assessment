@@ -28,7 +28,7 @@ def train(n_epochs, batch_size, lr, val_percent=0.1):
     masks = np.concatenate((xvertseg_masks, verse2019_masks))
     scores = xvertseg_scores.append(verse2019_scores, ignore_index=True)
 
-    # make train/val split
+    # make train/val split: only loads healthy in the train set
     train_set, val_set, test_set = split_train_val_test(masks, scores, patch_size, val_percent=val_percent)
 
     print('Saving experiment at: {}'.format(run_dir))

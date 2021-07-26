@@ -1,11 +1,11 @@
 import os
 import numpy as np
 from tiger.io import read_image, write_image
-from tiger.patches import PatchExtractor3D
 from tqdm.auto import tqdm
 import torch
 import pandas as pd
 from monai.transforms import Compose, RandRotate, RandZoom
+from utils import extract_vertebrae
 
 
 class DatasetMask(torch.utils.data.Dataset):
@@ -13,15 +13,17 @@ class DatasetMask(torch.utils.data.Dataset):
     Dataset of samples (x, y)
     x: the input, multiple vertebrae in diff channels shape = (context=2, patch_size, patch_size, patch_size)
     y: the output, shape to be predicted shape = (1, patch_size, patch_size, patch_size)
+    by default loads only the healthy vertebrae
     """
-    def __init__(self, scores, masks, patch_size, healthy_only=True, context=2, transforms=False):
+    def __init__(self, scores, masks, patch_size, healthy_only=True, context=2):
         self.x = []                            # the input: multiple vertebrae in diff channels (channel, patch_size, patch_size, patch_size)
         self.y = []                            # the output: predicted shape of the one left out in the middle of the input
         self.g = []                            # the grade of this sample
-        self.transforms = transforms           # whether to apply data aug
+        self.c = []                            # the case of this sample
         self.context = context                 # how many neighbouring vertebrae to use as input
         self.max_grade = 0 if healthy_only else 3
         self.IDS = []
+        self.orientation = []
 
         for row, mask in enumerate(tqdm(masks)):
             id = scores[row][1]
@@ -30,12 +32,12 @@ class DatasetMask(torch.utils.data.Dataset):
             vert_scores = scores[row][2:].reshape(18, 2).astype(float)
 
             # extract all vert patches in the mask
-            patches, verts_present = self.extract_vertebrae(mask, patch_size)
+            patches, verts_present, orients = extract_vertebrae(mask, patch_size)
 
             # go over all the scores
             for i, vert_score in enumerate(vert_scores):
                 if not (np.isnan(vert_score).any()):
-                    grade = vert_score[0]
+                    grade, case = vert_score[0], vert_score[1]
                     vert = i + 1
 
                     # for the ones that are healthy and present in the mask => construct sample (x, y)
@@ -53,25 +55,9 @@ class DatasetMask(torch.utils.data.Dataset):
                         self.x.append(x)
                         self.y.append(y)
                         self.g.append(grade)
+                        self.c.append(case)
                         self.IDS.append((id, vert))
-
-    def extract_vertebrae(self, mask, patch_size):
-        """
-        Extracts all patches with patch_size out of a complete mask and filters out other vertebrae.
-        Returns: list of patches, containing one vertebra (binary)
-                 list of which vertebrae are present
-        """
-        verts_present = np.unique(mask)[1:]
-        patches = []
-
-        for vert in verts_present:   # exclude background
-            centre = tuple(np.mean(np.argwhere(mask == vert), axis=0, dtype=int))
-            patch_extracter_msk = PatchExtractor3D(mask)
-            m = patch_extracter_msk.extract_cuboid(centre, patch_size)
-            m = np.where(m == vert, m > 0, 0)  # keep only this vert and make binary
-            patches.append(m)
-
-        return patches, verts_present
+                        self.orientation.append(orients[np.where(verts_present == vert)[0][0]])
 
     def __len__(self):
         """
@@ -119,9 +105,9 @@ def split_train_val_test(msks, scores, patch_size, train_percent=0.8, val_percen
     # apply split
     print('Available cases: {} \ntrain: {}, val: {}, test: {}'.format(N, len(train_ids), len(val_ids), len(test_ids)))
     print('Extracting patches...')
-    train_set = DatasetMask(np_scores[train_ids], msks[train_ids], patch_size, transforms=True)
-    val_set = DatasetMask(np_scores[val_ids], msks[val_ids], patch_size)
-    test_set = DatasetMask(np_scores[test_ids], msks[test_ids], patch_size, healthy_only=healthy_only)
+    train_set = DatasetMask(np_scores[train_ids], msks[train_ids], patch_size, healthy_only=healthy_only)
+    val_set = DatasetMask(np_scores[val_ids], msks[val_ids], patch_size, healthy_only=healthy_only)
+    test_set = DatasetMask(np_scores[test_ids], msks[test_ids], patch_size, healthy_only=False)
     print('train: {}, val: {}, test: {}'.format(train_set.__len__(), val_set.__len__(), test_set.__len__()))
     return train_set, val_set, test_set
 
@@ -131,7 +117,7 @@ def load_masks(data_dir, cases=120):
     Loads masks and scores from a directory.
     """
     # only the clean masks
-    msk_clean_dir = os.path.join(data_dir, 'masks_bodies_cleaned')
+    msk_clean_dir = os.path.join(data_dir, 'masks_bodies_final')
     msk_clean_paths = [os.path.join(msk_clean_dir, f) for f in sorted(os.listdir(msk_clean_dir)) if 'mha' in f][:cases]
 
     # get only the scores of cleaned masks
