@@ -21,13 +21,11 @@ class AbnormalityDetectionPipeline:
 
         # load pretrained coarse net
         self.coarse_net = UNet().to(self.device)
-        self.coarse_net.load_state_dict(torch.load(coarse_model_path))
-        self.coarse_net.eval()
+        self.coarse_net.load_state_dict(torch.load(coarse_model_path)).eval()
 
         # load pretrained refine net
         self.refine_net = UNet(in_channels=1).to(self.device)
-        self.refine_net.load_state_dict(torch.load(refine_model_path))
-        self.refine_net.eval()
+        self.refine_net.load_state_dict(torch.load(refine_model_path)).eval()
 
     def __call__(self, mask, header):
 

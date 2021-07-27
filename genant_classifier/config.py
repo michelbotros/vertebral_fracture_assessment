@@ -11,6 +11,9 @@ run_name = 'ResNet50-96'
 description = 'input: image and only mask of vertebra to be assessed'
 experiments_dir = os.path.join(base_dir, 'experiments', 'genant_classifier')
 
+# the model to load for the pipeline
+model_path = os.path.join(experiments_dir, run_name, 'epoch=55_step=13103_val loss grade=0.37.ckpt')
+
 # loading config
 patch_size = (96, 96, 96)
 resolution = (1.0, 1.0, 1.0)
