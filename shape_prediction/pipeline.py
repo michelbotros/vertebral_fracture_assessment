@@ -6,6 +6,7 @@ from unet import UNet
 from load_data import DatasetMask
 from config import patch_size, resolution, context
 from config import coarse_model_path, refine_model_path
+import pandas as pd
 
 
 class AbnormalityDetectionPipeline:
@@ -21,13 +22,15 @@ class AbnormalityDetectionPipeline:
 
         # load pretrained coarse net
         self.coarse_net = UNet().to(self.device)
-        self.coarse_net.load_state_dict(torch.load(coarse_model_path)).eval()
+        self.coarse_net.load_state_dict(torch.load(coarse_model_path))
+        self.coarse_net.eval()
 
         # load pretrained refine net
         self.refine_net = UNet(in_channels=1).to(self.device)
-        self.refine_net.load_state_dict(torch.load(refine_model_path)).eval()
+        self.refine_net.load_state_dict(torch.load(refine_model_path))
+        self.refine_net.eval()
 
-    def __call__(self, mask, header):
+    def __call__(self, name, mask, header):
 
         # resample the mask to target resolution
         print('Resampling to standard resolution.')
@@ -43,11 +46,12 @@ class AbnormalityDetectionPipeline:
         patches, verts_present, orients = extract_vertebrae(mask, self.patch_size)
         print('Found {} vertebrae'.format(len(verts_present)))
 
-        # store results in a dict
-        results = {}
+        # store results
+        grades = []
+        abnormality_scores = []
 
         for vert, orientation in zip(verts_present, orients):
-            print('\nAssessing vertebra: {}'.format(vert))
+            # print('\nAssessing vertebra: {}'.format(vert))
 
             # construct sample (x, y)
             x = np.zeros((self.context * 2, *patch_size))
@@ -67,11 +71,14 @@ class AbnormalityDetectionPipeline:
 
             y_pred = torch.sigmoid(fine).detach().cpu().squeeze().numpy()
             abnormality_score = compute_abnormality_score(y, y_pred, orientation)
-            print('Abnormality score: {}'.format(abnormality_score))
+            # print('Abnormality score: {}'.format(abnormality_score))
+            abnormality_scores.append(abnormality_score)
             grade = compute_grade(abnormality_score)
-            print('Grade: {}'.format(grade))
+            # print('Grade: {}'.format(grade))
+            grades.append(grade)
 
-            results.update({vert: {'grade': grade, 'abnormality:': abnormality_score}})
+        # store result in dataframe
+        results = pd.DataFrame({'name': name, 'vert': verts_present, 'grade': grades, 'abnormality:': abnormality_scores})
 
         return results
 

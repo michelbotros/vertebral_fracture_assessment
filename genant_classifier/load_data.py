@@ -26,7 +26,7 @@ class Dataset(torch.utils.data.Dataset):
         self.transforms = transforms           # whether to apply transforms or not
 
         # the patch extraction
-        for row, mask in enumerate(tqdm(masks)):
+        for row, mask in enumerate(masks):
             # get the dataset and id of this case
             source = scores[row][0]
             id = scores[row][1]
@@ -42,9 +42,12 @@ class Dataset(torch.utils.data.Dataset):
                     # if we also find this label in the mask
                     if label in np.unique(mask):
                         centre = tuple(np.mean(np.argwhere(mask == label), axis=0, dtype=int))
-                        patch_extracter_img = PatchExtractor3D(images[row], pad_value=-1000)  # pad with air
+
+                        image = images[row]
+                        patch_extracter_img = PatchExtractor3D(image, pad_value=-1000)  # pad with air
                         patch_img = patch_extracter_img.extract_cuboid(centre, self.patch_size + 16)
                         patch_img = np.clip(patch_img, -1000, 1500)
+
                         patch_extracter_msk = PatchExtractor3D(mask)
                         patch_msk = patch_extracter_msk.extract_cuboid(centre, self.patch_size + 16)
                         patch_msk = np.where(patch_msk == label, patch_msk, 0)  # only contain this vertebra, keep label
