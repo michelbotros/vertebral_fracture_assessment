@@ -7,7 +7,6 @@ from models.pl_base import Net
 from config import model_path, lr, weight_decay
 from torch.utils.data import DataLoader
 from load_data import Dataset
-from pytorch_lightning import Trainer
 import pandas as pd
 
 
@@ -71,14 +70,13 @@ if __name__ == "__main__":
     Pipeline script for docker container on Grand-Challenge.
     """
 
-    # location of input
-    name = 'doesnt matter'
+    # location of input/output
+    name = 'doesnt matter for now'
     input_dir_img = '/input/images/ct/'
     input_dir_seg = '/input/images/vertebra/'
-    output_dir = '/output/'
-
     input_path_img = [os.path.join(input_dir_img, f) for f in os.listdir(input_dir_img) if 'mha' in f][0]
     input_path_seg = [os.path.join(input_dir_seg, f) for f in os.listdir(input_dir_img) if 'mha' in f][0]
+    output_path = '/output/results.json'
 
     # read input (only one set of inputs is expected)
     image, header = read_image(input_path_img)
@@ -92,5 +90,10 @@ if __name__ == "__main__":
 
     # get results from the pipeline
     results = pipeline(name, image, mask, header)
+
+    # save output
+    results.to_json(output_path)
+
+
 
 
