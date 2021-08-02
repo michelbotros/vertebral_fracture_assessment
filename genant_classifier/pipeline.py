@@ -1,7 +1,7 @@
 import numpy as np
 import torch
-import torch.nn.functional as F
 from tiger.resampling import resample_image, resample_mask
+from tiger.io import read_image
 from config import patch_size, resolution, batch_size
 from models.pl_base import Net
 from config import model_path, lr, weight_decay
@@ -12,7 +12,7 @@ import pandas as pd
 
 
 class GenantClassifierPipeline:
-    def __init__(self):
+    def __init__(self, model):
 
         # load config
         self.patch_size = patch_size
@@ -24,7 +24,8 @@ class GenantClassifierPipeline:
 
         # load pretrained net
         self.net = Net(lr=lr, weight_decay=weight_decay).to(self.device)
-        self.net = self.net.load_from_checkpoint(model_path, lr=lr, weight_decay=weight_decay).eval()
+        self.net.eval()
+        self.net = self.net.load_from_checkpoint(model, lr=lr, weight_decay=weight_decay)
 
     def __call__(self, name, image, mask, header):
 
@@ -63,5 +64,33 @@ class GenantClassifierPipeline:
             results = pd.DataFrame({'name': name, 'vert': verts, 'grade': g_hat})
 
         return results
+
+
+if __name__ == "__main__":
+    """
+    Pipeline script for docker container on Grand-Challenge.
+    """
+
+    # location of input
+    name = 'doesnt matter'
+    input_dir_img = '/input/images/ct/'
+    input_dir_seg = '/input/images/vertebra/'
+    output_dir = '/output/'
+
+    input_path_img = [os.path.join(input_dir_img, f) for f in os.listdir(input_dir_img) if 'mha' in f][0]
+    input_path_seg = [os.path.join(input_dir_seg, f) for f in os.listdir(input_dir_img) if 'mha' in f][0]
+
+    # read input (only one set of inputs is expected)
+    image, header = read_image(input_path_img)
+    mask, _ = read_image(input_path_seg)
+
+    # location of weights
+    model_path = '/opt/algorithm/ResNet50_weights.pt'
+
+    # make a pipeline
+    pipeline = GenantClassifierPipeline(model=model_path)
+
+    # get results from the pipeline
+    results = pipeline(name, image, mask, header)
 
 
