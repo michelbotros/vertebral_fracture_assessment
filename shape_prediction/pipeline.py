@@ -1,16 +1,17 @@
 import numpy as np
 import torch
+import os
+import pandas as pd
+from tiger.io import read_image, write_image
 from tiger.resampling import resample_mask
 from utils import compute_abnormality_score, compute_grade, extract_vertebrae
 from unet import UNet
 from load_data import DatasetMask
 from config import patch_size, resolution, context
-from config import coarse_model_path, refine_model_path
-import pandas as pd
 
 
 class AbnormalityDetectionPipeline:
-    def __init__(self):
+    def __init__(self, coarse_model_path, refine_model_path):
 
         # load config
         self.patch_size = patch_size
@@ -30,21 +31,24 @@ class AbnormalityDetectionPipeline:
         self.refine_net.load_state_dict(torch.load(refine_model_path))
         self.refine_net.eval()
 
+        print('=> Loaded weights.')
+
     def __call__(self, name, mask, header):
 
         # resample the mask to target resolution
-        print('Resampling to standard resolution.')
+        print('=> Resampling to standard resolution.')
         mask = resample_mask(mask, header.spacing, self.resolution)
 
         # rotate and remove cervical vertebrae and partially visible
-        print('Removing partially visible and cervical vertebrae.')
+        print('=> Removing partially visible and cervical vertebrae.')
         mask = np.rot90(mask, axes=(1, 2))
-        mask = np.where(mask > 100, 0, mask)         # if partially visible remove
+        mask = np.where(mask > 100, 0, mask)                   # if partially visible remove
+        mask = np.where((mask > 0) & (mask < 8), 0, mask)      # remove c vertebrae
 
         # extract patches around the vertebrae
-        print('Extracting vertebrae...')
+        print('=> Extracting vertebrae...')
         patches, verts_present, orients = extract_vertebrae(mask, self.patch_size)
-        print('Found {} vertebrae'.format(len(verts_present)))
+        print('=> Found {} vertebrae'.format(len(verts_present)))
 
         # store results
         grades = []
@@ -82,3 +86,58 @@ class AbnormalityDetectionPipeline:
 
         return results
 
+
+def result_segmentation(mask, results):
+    """"
+    To display the predicted results for each vertebra.
+    Take the input mask and label:  normal vertebrae 1, mild fractures 2 etc.
+    """
+    # remove partially visible
+    mask = np.where(mask > 100, 0, mask)
+
+    for vert, grade in zip(results['vert'], results['grade']):
+        mask = np.where(mask == vert, grade + 1, mask)
+
+    return mask
+
+
+def main():
+    """
+    Pipeline script for docker container on Grand-Challenge.
+    """
+
+    # location of input
+    input_dir_img = '/input/images/ct/'
+    input_dir_seg = '/input/images/vertebral-body/'
+    input_path_img = [os.path.join(input_dir_img, f) for f in os.listdir(input_dir_img) if 'mha' in f][0]
+    input_path_seg = [os.path.join(input_dir_seg, f) for f in os.listdir(input_dir_seg) if 'mha' in f][0]
+    name = input_path_img.split('/')[-1].split('.')[0]
+
+    # location of output
+    file_name = input_path_img.split('/')[-1]
+    output_path_seg = os.path.join('/output/images/', file_name)
+    output_path_json = '/output/results.json'
+
+    # read input
+    mask, header = read_image(input_path_seg)
+
+    # location of weights
+    course_model_path = '/opt/algorithm/checkpoints/best_model_epoch_41_loss_0.032.pt'
+    refine_model_path = '/opt/algorithm/checkpoints/best_model_epoch_191_loss_0.033.pt'
+
+    # make a pipeline
+    pipeline = AbnormalityDetectionPipeline(course_model_path, refine_model_path)
+
+    # get results from the pipeline
+    results = pipeline(name, mask, header)
+
+    # save output, record format
+    results.to_json(output_path_json, orient='records')
+
+    # get the result segmentation
+    result_seg = result_segmentation(mask=mask, results=results)
+    write_image(output_path_seg, result_seg, header)
+
+
+if __name__ == "__main__":
+    main()
