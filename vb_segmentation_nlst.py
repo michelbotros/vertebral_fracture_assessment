@@ -42,7 +42,7 @@ class GrandChallengeAlgorithm:
                     break
             else:
                 continue
-            self.existing_outputs[job['inputs'][0]['image']] = output
+            self.existing_outputs[job['inputs'][0]['image']] = job['outputs']
 
     def run(self, image_url, output_file: Path):
         """Uploads the image to grand challenge and downloads the resulting segmentation mask"""
