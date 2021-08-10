@@ -96,12 +96,18 @@ def compute_weight_mask(vertebral_width, orientation, c=0.25, size=64):
     return weight_mask
 
 
-def compute_abnormality_score(true, pred, orientation, c=0.25):
+def compute_abnormality_score(true, pred, orientation, c=0.25, cut_off=0.005):
     """
     Computes an abnormality score by comparing the predicted shape of the vertebra with the true shape of the vertebra.
+    With focus on the centre of the vertebra.
+
     true: the real shape of the vert (binary mask)
     pred: the predicted shape of the vert (output of sigmoid)
     orientation: orientation of the true vertebra (computed from centres)
+    c: centre region, beyond that region the abnormality is weighed less
+    cut_off: upper bound for abnormality score
+
+    returns: abnormality score in  range [0, 1]
     """
     # log loss like in BCE but only 1 part of it
     abnormality_map = -np.log((1 - pred + 1e-15)) * (1 - true)
@@ -123,6 +129,9 @@ def compute_abnormality_score(true, pred, orientation, c=0.25):
     # aggregate and normalize with vertebral width
     abnormality_score = np.mean(abnormality_map_weighted) / vert_width
 
+    # scale to [0, 1]
+    abnormality_score = np.clip(abnormality_score / cut_off, 0, 1)
+
     return abnormality_score
 
 
@@ -136,8 +145,8 @@ def compute_grade(abnormality_score):
 
     # insert learned attributes for Logistic Regression
     log_reg.classes_ = np.array([0., 1., 2., 3.])
-    log_reg.coef_ = np.array([[-9813.38753351], [-927.63586632], [4724.2888518], [6016.73454672]])
-    log_reg.intercept_ = np.array([5.09124049, 1.80907156, -1.65233566, -5.24797639])
+    log_reg.coef_ = np.array([[-50.76764612], [0.21989911], [22.26237849], [28.28536852]])
+    log_reg.intercept_ = np.array([4.96892919, 1.42285313, -1.50097488, -4.89080743])
 
     # make the prediction for the grade
     grade = log_reg.predict(np.array([abnormality_score]).reshape((1, -1)))[0]

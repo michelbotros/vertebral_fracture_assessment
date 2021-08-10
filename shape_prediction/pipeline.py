@@ -82,7 +82,7 @@ class AbnormalityDetectionPipeline:
             grades.append(grade)
 
         # store result in dataframe
-        results = pd.DataFrame({'name': name, 'vert': verts_present, 'grade': grades, 'abnormality:': abnormality_scores})
+        results = pd.DataFrame({'name': name, 'vert': verts_present, 'grade': grades, 'abnormality': abnormality_scores})
 
         return results
 
@@ -90,13 +90,18 @@ class AbnormalityDetectionPipeline:
 def result_segmentation(mask, results):
     """"
     To display the predicted results for each vertebra.
-    Take the input mask and label:  normal vertebrae 1, mild fractures 2 etc.
+    Shows the abnormality score.
     """
-    # remove partially visible
+    # remove partially visible and C vertebra
     mask = np.where(mask > 100, 0, mask)
+    mask = np.where((mask > 0) & (mask < 8), 0, mask)
 
-    for vert, grade in zip(results['vert'], results['grade']):
-        mask = np.where(mask == vert, grade + 1, mask)
+    # fill in the abnormality score
+    for vert, abnormality in zip(results['vert'], results['abnormality']):
+
+        # scale a bit different for the plot (traffic light on Grand-challenge)
+        abnormality_plot = np.clip(abnormality * 3, 0, 1)
+        mask = np.where(mask == vert, int(abnormality_plot * 255), mask)
 
     return mask
 

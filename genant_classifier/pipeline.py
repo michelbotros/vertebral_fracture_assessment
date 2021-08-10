@@ -70,11 +70,12 @@ def result_segmentation(mask, results):
     To display the predicted results for each vertebra.
     Take the input mask and label:  normal vertebrae 1, mild fractures 2 etc.
     """
-    # remove partially visible
+    # remove partially visible and C vertebra
     mask = np.where(mask > 100, 0, mask)
+    mask = np.where((mask > 0) & (mask < 8), 0, mask)
 
     for vert, grade in zip(results['vert'], results['grade']):
-        mask = np.where(mask == vert, grade + 1, mask)
+        mask = np.where(mask == vert, grade + 2, mask)
 
     return mask
 
