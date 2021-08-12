@@ -23,8 +23,8 @@ class GenantClassifierPipeline:
 
         # load pretrained net
         self.net = Net(lr=lr, weight_decay=weight_decay).to(self.device)
-        self.net.eval()
         self.net = self.net.load_from_checkpoint(model_path, lr=lr, weight_decay=weight_decay)
+        self.net.eval()
 
     def __call__(self, name, image, mask, header):
 

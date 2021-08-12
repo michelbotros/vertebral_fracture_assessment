@@ -42,12 +42,9 @@ class Dataset(torch.utils.data.Dataset):
                     # if we also find this label in the mask
                     if label in np.unique(mask):
                         centre = tuple(np.mean(np.argwhere(mask == label), axis=0, dtype=int))
-
-                        image = images[row]
-                        patch_extracter_img = PatchExtractor3D(image, pad_value=-1000)  # pad with air
+                        patch_extracter_img = PatchExtractor3D(images[row], pad_value=-1000)  # pad with air
                         patch_img = patch_extracter_img.extract_cuboid(centre, self.patch_size + 16)
                         patch_img = np.clip(patch_img, -1000, 1500)
-
                         patch_extracter_msk = PatchExtractor3D(mask)
                         patch_msk = patch_extracter_msk.extract_cuboid(centre, self.patch_size + 16)
                         patch_msk = np.where(patch_msk == label, patch_msk, 0)  # only contain this vertebra, keep label
@@ -135,7 +132,7 @@ def split_train_val_test(imgs, msks, scores, patch_size, data_aug, train_percent
     return train_set, val_set, test_set
 
 
-def load_data(data_dir, cases=120):
+def load_data(data_dir):
     """"
     Loads images, masks and scores from a directory (on image level).
     Note: currently loads resampled images.
@@ -144,17 +141,15 @@ def load_data(data_dir, cases=120):
     msk_dir = os.path.join(data_dir, 'masks')
 
     # load all masks
-    msk_paths = [os.path.join(msk_dir, f) for f in sorted(os.listdir(msk_dir)) if 'resampled' in f][:cases]
-    # msk_ids = [f.split('/')[-1].split('_')[1][:-4] for f in msk_paths]            # (!) for NLST
-    msk_ids = [f.split('/')[-1].split('.')[0][-3:] for f in msk_paths]              # (!) for xvertseg and verse
+    msk_paths = [os.path.join(msk_dir, f) for f in sorted(os.listdir(msk_dir)) if 'resampled' in f]
+    msk_ids = [f.split('/')[-1].split('.')[0] for f in msk_paths]
 
     # only load the images that are also present in the masks
-    img_paths = [os.path.join(img_dir, f) for f in sorted(os.listdir(img_dir)) if any(id in f for id in msk_ids)
-                 and 'resampled' in f]
+    img_paths = [os.path.join(img_dir, f) for f in sorted(os.listdir(img_dir)) if any(id in f for id in msk_ids)]
 
     imgs = np.empty(len(img_paths), dtype=object)
     msks = np.empty(len(msk_paths), dtype=object)
-    scores = pd.read_csv(os.path.join(data_dir, 'scores.csv')).iloc[:cases]
+    scores = pd.read_csv(os.path.join(data_dir, 'scores.csv'))
 
     # load images
     print('Loading images from {}...'.format(img_dir))
@@ -168,8 +163,8 @@ def load_data(data_dir, cases=120):
     for i, path in enumerate(tqdm(msk_paths)):
         msk, header = read_image(path)
         msk = np.rot90(msk, axes=(1, 2))
-        msk = np.where(msk > 100, msk - 100, msk)      # if partially visible
-        msk = np.where(msk > 7, msk - 7, 0)            # remove c vertebrae, shift labels: 0 => bg, 1-18 => T1-L6
+        msk = np.where(msk > 100, 0, msk)            # remove partially visible
+        msk = np.where(msk > 7, msk - 7, 0)          # remove c vertebrae, shift labels: 0 => bg, 1-18 => L1-L6
         msks[i] = msk
 
     return imgs, msks, scores

@@ -1,5 +1,5 @@
 from config import *
-from load_data import load_data, split_train_val_test, Dataset
+from load_data import load_data, split_train_val_test
 from models.pl_base import Net
 import torch
 from torch.utils.data import DataLoader
@@ -56,6 +56,19 @@ def train(model, train_set, val_set):
 
 
 def main(train_mode, test_mode):
+
+    # load data
+    xvertseg_imgs, xvertseg_msks, xvertseg_scores = load_data(xvertseg_dir)
+    verse2019_imgs, verse2019_msks, verse2019_scores = load_data(verse2019_dir)
+
+    # stack data sets together
+    imgs = np.concatenate((xvertseg_imgs, verse2019_imgs))
+    msks = np.concatenate((xvertseg_msks, verse2019_msks))
+    scores = xvertseg_scores.append(verse2019_scores, ignore_index=True)
+
+    # split in train/val/test
+    train_set, val_set, test_set = split_train_val_test(imgs, msks, scores, patch_size, data_aug)
+
     # get the model
     model = Net(lr=lr, weight_decay=weight_decay)
 
@@ -63,74 +76,24 @@ def main(train_mode, test_mode):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     summary(model.to(device), input_size=(2, *patch_size), batch_size=batch_size)
 
-    # train then test
+    # train
     if train_mode:
-        # load data
-        xvertseg_imgs, xvertseg_msks, xvertseg_scores = load_data(xvertseg_dir)
-        verse2019_imgs, verse2019_msks, verse2019_scores = load_data(verse2019_dir)
-
-        # stack data sets together
-        imgs = np.concatenate((xvertseg_imgs, verse2019_imgs))
-        msks = np.concatenate((xvertseg_msks, verse2019_msks))
-        scores = xvertseg_scores.append(verse2019_scores)
-
-        # split in train/val/test
-        train_set, val_set, test_set = split_train_val_test(imgs, msks, scores, patch_size, data_aug)
         trainer = train(model, train_set, val_set)
 
         # use the best model just trained
         if test_mode:
-            test_loader = DataLoader(test_set, batch_size=batch_size, num_workers=16, shuffle=False, drop_last=True)
+
+            test_loader = DataLoader(test_set, batch_size=1, num_workers=16, shuffle=False, drop_last=False)
             print('Testing model: {}'.format(trainer.checkpoint_callback.best_model_path))
 
             # get results on the test set
-            results = trainer.test(test_dataloaders=test_loader, ckpt_path='best')
-
-            # save predictions
-            pred_df = pd.DataFrame({'g_hat': results[0]['test g_hat'], 'c_hat': results[0]['test c_hat']})
-            pred_df.to_csv(os.path.join(experiments_dir, run_name, 'preds.csv'))
-
-            # save test set as well
-            with open(os.path.join(experiments_dir, run_name, 'test_set'), 'wb') as f:
-                pickle.dump(test_set, f)
-    else:
-        model_name = 'epoch=55_step=13103_val loss grade=0.37.ckpt'
-        model_path = os.path.join(experiments_dir, run_name, model_name)
-        print('Loading model from {}'.format(model_path))
-        model = model.load_from_checkpoint(model_path, lr=lr, weight_decay=weight_decay)
-
-        print('Testing on data from {}'.format(nlst_dir))
-        nlst_imgs, nlst_msks, nlst_scores = load_data(nlst_dir, cases=110)
-        nlst_scores = nlst_scores.to_numpy()
-        print('Extracting patches...')
-        test_set = Dataset(nlst_scores, nlst_imgs, nlst_msks, patch_size, transforms=False)
-        print('Test set has {} vertebrae.'.format(test_set.__len__()))
-        test_loader = DataLoader(test_set, batch_size=1, num_workers=16, shuffle=False, drop_last=False)
-
-        # get IDS and vertebra label of the samples in the test set
-        ids = test_set.IDS
-        verts = [v + 7 for v in test_set.vertebrae]
-
-        # log everything
-        os.environ["WANDB_API_KEY"] = wandb_key
-        wandb_logger = WandbLogger(project="Vertebral Fracture Classification", name=run_name + '_nlst_test')
-
-        # make trainer and test model
-        trainer = Trainer(gpus=1, logger=wandb_logger)
-        results = trainer.test(model, test_dataloaders=test_loader)
-
-        # save predictions
-        pred_df = pd.DataFrame({'ID': ids, 'vert': verts, 'grade': results[0]['test g_hat']})
-        pred_df.to_csv(os.path.join(experiments_dir, run_name, 'nlst_grades.csv'), index=False)
-
-        # save test set as well
-        # with open(os.path.join(experiments_dir, run_name, 'nlst_test_set'), 'wb') as f:
-        #     pickle.dump(test_set, f)
+            trainer.test(test_dataloaders=test_loader, ckpt_path='best')
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Training and testing pipeline for Vertebrae Fracture Detection.')
-    parser.add_argument('--train', help='run in test mode', default=False)
-    parser.add_argument('--test', help='run in test mode', default=False, action='store_true')
+    parser.add_argument('--train', help='run in train mode', default=True)
+    parser.add_argument('--test', help='run in test mode', default=True, action='store_true')
+    parser.add_argument('--gpus', help='how many gpus to use', default=1)
     args = parser.parse_args()
     main(args.train, args.test)

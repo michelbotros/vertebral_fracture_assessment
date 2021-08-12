@@ -18,7 +18,7 @@ class Net(pl.LightningModule):
         super(Net, self).__init__()
         self.lr = lr
         self.weight_decay = weight_decay
-        self.net = generate_model(model_depth=50)
+        self.net = CNN()
 
         # non weighted CCE
         self.loss_g = nn.CrossEntropyLoss()
@@ -52,8 +52,7 @@ class Net(pl.LightningModule):
         kappa_g = cohen_kappa_score(g, g_hat, weights='quadratic')
         kappa_c = cohen_kappa_score(c, c_hat, weights='quadratic')
         plot_confusion_matrix(g, g_hat, labels=['Healthy', 'Mild', 'Moderate', 'Severe'])
-        self.log_dict({'test g_hat': g_hat, 'test c_hat': c_hat,
-                       'test acc_g': acc_g, 'test acc_c': acc_c,
+        self.log_dict({'test acc_g': acc_g, 'test acc_c': acc_c,
                        'test kappa_c': kappa_c, 'test kappa_g': kappa_g})
 
     def training_step(self, batch, batch_idx):

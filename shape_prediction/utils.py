@@ -139,6 +139,7 @@ def compute_grade(abnormality_score):
     """"
     Computes the grade from an abnormality score with Logistic Regression.
     Fit on the development set.
+    Thresholds: [0.06954807, 0.13264613, 0.56281656]
     """
     # learned coefficients from development set
     log_reg = LogisticRegression()
