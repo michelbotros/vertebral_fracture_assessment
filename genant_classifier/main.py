@@ -12,7 +12,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 import numpy as np
 import pandas as pd
 import argparse
-import pickle
+import shutil
 
 
 def train(model, train_set, val_set):
@@ -23,7 +23,7 @@ def train(model, train_set, val_set):
 
     # log everything
     os.environ["WANDB_API_KEY"] = wandb_key
-    wandb_logger = WandbLogger(project="Vertebral Fracture Classification", name=run_name, save_dir=experiments_dir,
+    wandb_logger = WandbLogger(project="Genant Classifier", name=run_name, save_dir=experiments_dir,
                                settings=wandb.Settings(start_method='fork'))
     wandb_logger.log_hyperparams({
         "batch_size": batch_size,
@@ -56,6 +56,14 @@ def train(model, train_set, val_set):
 
 
 def main(train_mode, test_mode):
+
+    # first copy the code the experiment dir
+    code_dest = os.path.join(experiments_dir, run_name, 'src')
+    os.makedirs(code_dest, exist_ok=True)
+    shutil.copy2('config.py', code_dest)
+    shutil.copy2('load_data.py', code_dest)
+    shutil.copy2('main.py', code_dest)
+    shutil.copytree('models', os.path.join(code_dest, 'models'))
 
     # load data
     xvertseg_imgs, xvertseg_msks, xvertseg_scores = load_data(xvertseg_dir)

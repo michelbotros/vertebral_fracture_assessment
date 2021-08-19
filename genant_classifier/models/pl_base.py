@@ -7,7 +7,7 @@ from wandb.sklearn import plot_confusion_matrix
 from sklearn.metrics import accuracy_score, cohen_kappa_score
 import torch.nn.functional as F
 from models.cnn import CNN
-from models.resnet import generate_model
+from models.densenet import generate_model
 
 
 class Net(pl.LightningModule):
@@ -18,7 +18,7 @@ class Net(pl.LightningModule):
         super(Net, self).__init__()
         self.lr = lr
         self.weight_decay = weight_decay
-        self.net = CNN()
+        self.net = generate_model(model_depth=121)
 
         # non weighted CCE
         self.loss_g = nn.CrossEntropyLoss()

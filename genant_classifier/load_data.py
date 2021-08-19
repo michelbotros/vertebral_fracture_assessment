@@ -43,10 +43,10 @@ class Dataset(torch.utils.data.Dataset):
                     if label in np.unique(mask):
                         centre = tuple(np.mean(np.argwhere(mask == label), axis=0, dtype=int))
                         patch_extracter_img = PatchExtractor3D(images[row], pad_value=-1000)  # pad with air
-                        patch_img = patch_extracter_img.extract_cuboid(centre, self.patch_size + 16)
+                        patch_img = patch_extracter_img.extract_cuboid(centre, self.patch_size)
                         patch_img = np.clip(patch_img, -1000, 1500)
                         patch_extracter_msk = PatchExtractor3D(mask)
-                        patch_msk = patch_extracter_msk.extract_cuboid(centre, self.patch_size + 16)
+                        patch_msk = patch_extracter_msk.extract_cuboid(centre, self.patch_size)
                         patch_msk = np.where(patch_msk == label, patch_msk, 0)  # only contain this vertebra, keep label
 
                         # add score and info about this patch
@@ -84,21 +84,21 @@ class Dataset(torch.utils.data.Dataset):
         c = torch.tensor(self.cases[i], dtype=torch.long)
 
         # define transforms
-        crop_transform = Compose([RandSpatialCrop(roi_size=self.patch_size, random_size=False)])
         spatial_transforms = Compose([RandRotate(prob=0.25, range_x=0.3, range_y=0.3, range_z=0, mode='nearest', padding_mode='zeros')])
         other_transforms = Compose([RandGaussianNoise(prob=0.25, mean=0, std=0.05),
                                     RandGaussianSmooth(prob=0.25, sigma_x=(0.25, 0.75), sigma_y=(0.25, 0.75), sigma_z=(0.25, 0.75))])
 
         if self.transforms:
+
             # apply some on just the image, spatial transforms need to be applied to both
             patch_img = other_transforms(patch_img)
-            x = crop_transform(np.stack((patch_img, patch_msk)))
+            x = np.stack((patch_img, patch_msk))
             x = spatial_transforms(x)
             x = torch.tensor(x, dtype=torch.float32)
             return x, g, c
 
-        # always apply crop on both image and mask
-        x = crop_transform(np.stack((patch_img, patch_msk)))
+        # just stack them if no transforms
+        x = np.stack((patch_img, patch_msk))
         x = torch.tensor(x, dtype=torch.float32)
         return x, g, c
 
@@ -106,7 +106,15 @@ class Dataset(torch.utils.data.Dataset):
 def split_train_val_test(imgs, msks, scores, patch_size, data_aug, train_percent=0.8, val_percent=0.1):
     """
     Splits the loaded data into a train, validation and test set.
+    Removes the neck images.
     """
+
+    # neck images
+    rm_ids = [201, 202, 205, 207, 208, 209, 212, 214, 215, 221, 223, 225, 226, 227, 230, 232, 235, 239, 242, 243]
+
+    # indexes to remove
+    rm_inds = list(scores[scores['ID'].isin(rm_ids)].index)
+
     # make train and val split on image level
     IDs = np.arange(len(msks))
     np.random.seed(1993)
@@ -115,9 +123,9 @@ def split_train_val_test(imgs, msks, scores, patch_size, data_aug, train_percent
     N = len(IDs)
     n_train_end = int(train_percent * N)
     n_val_end = int(val_percent * N) + n_train_end
-    train_ids = IDs[:n_train_end]
-    val_ids = IDs[n_train_end:n_val_end]
-    test_ids = IDs[n_val_end:]
+    train_ids = [x for x in IDs[:n_train_end] if x not in rm_inds]
+    val_ids = [x for x in IDs[n_train_end:n_val_end] if x not in rm_inds]
+    test_ids = [x for x in IDs[n_val_end:] if x not in rm_inds]
 
     # convert the scores to numpy, for indexing
     np_scores = scores.to_numpy()
@@ -138,7 +146,7 @@ def load_data(data_dir):
     Note: currently loads resampled images.
     """
     img_dir = os.path.join(data_dir, 'images')
-    msk_dir = os.path.join(data_dir, 'masks')
+    msk_dir = os.path.join(data_dir, 'masks_bodies_final')
 
     # load all masks
     msk_paths = [os.path.join(msk_dir, f) for f in sorted(os.listdir(msk_dir)) if 'resampled' in f]

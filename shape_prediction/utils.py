@@ -137,19 +137,18 @@ def compute_abnormality_score(true, pred, orientation, c=0.25, cut_off=0.005):
 
 def compute_grade(abnormality_score):
     """"
-    Computes the grade from an abnormality score with Logistic Regression.
-    Fit on the development set.
-    Thresholds: [0.06954807, 0.13264613, 0.56281656]
+    Computes the grade from an abnormality score.
+    Thresholds were found using Logistic Regression, fit on the train set.
     """
-    # learned coefficients from development set
-    log_reg = LogisticRegression()
+    thresholds = [0.06954807, 0.13264613, 0.56281656]
 
-    # insert learned attributes for Logistic Regression
-    log_reg.classes_ = np.array([0., 1., 2., 3.])
-    log_reg.coef_ = np.array([[-50.76764612], [0.21989911], [22.26237849], [28.28536852]])
-    log_reg.intercept_ = np.array([4.96892919, 1.42285313, -1.50097488, -4.89080743])
-
-    # make the prediction for the grade
-    grade = log_reg.predict(np.array([abnormality_score]).reshape((1, -1)))[0]
+    if abnormality_score > thresholds[2]:
+        grade = 3
+    elif abnormality_score > thresholds[1]:
+        grade = 2
+    elif abnormality_score > thresholds[0]:
+        grade = 1
+    else:
+        grade = 0
 
     return grade

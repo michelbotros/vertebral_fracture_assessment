@@ -7,8 +7,8 @@ verse2019_dir = os.path.join(base_dir, 'datasets/verse2019/')
 nlst_dir = os.path.join(base_dir, 'datasets/nlst/')
 
 # dir to store experiment
-run_name = 'CNN-96_check'
-description = 'input: image and only mask of vertebra to be assessed'
+run_name = 'final_DenseNet121-96_bodies'
+description = 'see source code'
 experiments_dir = os.path.join(base_dir, 'experiments', 'genant_classifier')
 
 # loading config
@@ -16,7 +16,7 @@ patch_size = (96, 96, 96)
 resolution = (1.0, 1.0, 1.0)
 
 # training config
-batch_size = 4
+batch_size = 8
 lr = 1e-4
 epochs = 150
 weight_decay = 0.001
