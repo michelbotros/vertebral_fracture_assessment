@@ -6,8 +6,8 @@ import torch
 from wandb.sklearn import plot_confusion_matrix
 from sklearn.metrics import accuracy_score, cohen_kappa_score
 import torch.nn.functional as F
-from processor.models.cnn import CNN
-from processor.models.resnet import generate_model
+from .cnn import CNN
+from .resnet import generate_model
 
 
 class Net(pl.LightningModule):

@@ -7,7 +7,7 @@ verse2019_dir = os.path.join(base_dir, 'datasets/verse2019/')
 nlst_dir = os.path.join(base_dir, 'datasets/nlst/')
 
 # dir to store experiment
-run_name = 'final_ResNet50-64_bodies'
+run_name = 'final_CBR5-64_bodies'
 description = 'see source code'
 experiments_dir = os.path.join(base_dir, 'experiments', 'genant_classifier')
 

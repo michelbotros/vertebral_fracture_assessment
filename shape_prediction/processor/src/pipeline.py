@@ -18,6 +18,12 @@ class AbnormalityDetectionPipeline:
         self.resolution = resolution
         self.context = context
 
+        print('Configuration:')
+        print('Patch size: {}'.format(self.patch_size))
+        print('Resolution: {}'.format(self.resolution))
+        print('Context: {}'.format(self.self.context))
+        print('Batch size: 1')
+
         # set device to use for this pipeline
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 

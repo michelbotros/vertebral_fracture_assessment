@@ -5,10 +5,9 @@ import pandas as pd
 from torch.utils.data import DataLoader
 from tiger.resampling import resample_image, resample_mask
 from tiger.io import read_image, write_image
-
-from processor.src.config import patch_size, resolution, batch_size, lr, weight_decay
-from processor.src.models.pl_base import Net
-from processor.src.load_data import Dataset
+from config import patch_size, resolution, batch_size, lr, weight_decay
+from models.pl_base import Net
+from load_data import Dataset
 
 
 class GenantClassifierPipeline:
@@ -18,6 +17,11 @@ class GenantClassifierPipeline:
         self.patch_size = patch_size
         self.resolution = resolution
         self.batch_size = batch_size
+
+        print('Configuration:')
+        print('Patch size: {}'.format(self.patch_size))
+        print('Resolution: {}'.format(self.resolution))
+        print('Batch size: {}'.format(self.batch_size))
 
         # set device to use for this pipeline
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
