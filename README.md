@@ -4,7 +4,7 @@ Two algorithms were developed:
 
 ### (1) Genant classification  algorithm (`genant_classifier/`)
 This algorithm identifies vertebral compression fractures and predicts fractures grades following the commonly used Genant classification.
-* Source code for development, training and validation (xgenant_classifier/devel/`)
+* Source code for development, training and validation (`genant_classifier/devel/`)
 * Processor for applying the method to unseen images (`genant_classifier/processor/`)
 
 ### (2) Vertebral Abnormality Scoring (`shape_prediction/`)
