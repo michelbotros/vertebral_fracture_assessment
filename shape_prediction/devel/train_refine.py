@@ -15,6 +15,15 @@ from sklearn.metrics import accuracy_score
 
 def train(n_epochs, batch_size, lr, val_percent, k, c):
 
+    # first copy the code the experiment dir
+    code_dest = os.path.join(experiments_dir, run_name, 'src')
+    os.makedirs(code_dest, exist_ok=True)
+    shutil.copy2('config.py', code_dest)
+    shutil.copy2('load_data.py', code_dest)
+    shutil.copy2('train_refine.py', code_dest)
+    shutil.copy2('unet.py', code_dest)
+    shutil.copy2('utils.py', code_dest)
+
     # declare device for training
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 

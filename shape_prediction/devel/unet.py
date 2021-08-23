@@ -49,7 +49,7 @@ class UNet(nn.Module):
     """"
     A UNet without skip connections, uses transposed convolutions as default upsampling strategy.
     Currently using padding to prevent the feature maps from getting to small to upsample again.
-    input: multiple vertebrae in diff channels shape = (context=2, patch_size, patch_size, patch_size)
+    input: multiple vertebrae in diff channels shape = (context*2, patch_size, patch_size, patch_size)
     output: shape to be predicted shape = (1, patch_size, patch_size, patch_size)
     """
     def __init__(self, in_channels=4, out_channels=1, init_filters=64):

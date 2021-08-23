@@ -97,7 +97,7 @@ def main():
 
     # location of input
     input_dir_img = '/input/images/ct/'
-    input_dir_seg = '/input/images/vertebra/'
+    input_dir_seg = '/input/images/vertebral-body/'
     input_path_img = [os.path.join(input_dir_img, f) for f in os.listdir(input_dir_img) if 'mha' in f][0]
     input_path_seg = [os.path.join(input_dir_seg, f) for f in os.listdir(input_dir_seg) if 'mha' in f][0]
 
