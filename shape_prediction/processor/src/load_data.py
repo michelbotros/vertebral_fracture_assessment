@@ -5,7 +5,9 @@ from tqdm.auto import tqdm
 import torch
 import pandas as pd
 from monai.transforms import Compose, RandRotate, RandZoom
-from utils import extract_vertebrae
+import math
+from scipy.ndimage import rotate
+from tiger.patches import PatchExtractor3D
 
 
 class DatasetMask(torch.utils.data.Dataset):
@@ -73,6 +75,48 @@ class DatasetMask(torch.utils.data.Dataset):
         y = torch.tensor(self.y[i], dtype=torch.float32)
         g = torch.tensor(self.g[i], dtype=torch.float32)
         return x, y, g
+
+
+def extract_vertebrae(mask, patch_size):
+    """
+    Extracts all patches with patch_size out of a complete mask and filters out other vertebrae.
+    Returns: list of patches, containing one vertebra (binary)
+             list of which vertebrae are present
+             list of orientations of the vertebrae
+    """
+    verts_present = np.unique(mask)[1:]
+    patches = []
+    centres = []
+
+    # get patches and centres
+    for vert in verts_present:  # exclude background
+        centre = tuple(np.mean(np.argwhere(mask == vert), axis=0, dtype=int))
+        patch_extracter_msk = PatchExtractor3D(mask)
+        m = patch_extracter_msk.extract_cuboid(centre, patch_size)
+        m = np.where(m == vert, m > 0, 0)  # keep only this vert and make binary
+        patches.append(m)
+        centres.append(centre)
+
+    # compute orientations
+    orients = []
+
+    for i, vert in enumerate(verts_present):
+
+        if i == 0:
+            a_x, a_y = centres[i][2], centres[i][1]  # this and next centre to compute orient
+            b_x, b_y = centres[i + 1][2], centres[i + 1][1]
+        elif i == len(verts_present) - 1:  # previous and this centre to compute orient
+            a_x, a_y = centres[i - 1][2], centres[i - 1][1]
+            b_x, b_y = centres[i][2], centres[i][1]
+        else:  # previous and next centre to compute orient
+            a_x, a_y = centres[i - 1][2], centres[i - 1][1]
+            b_x, b_y = centres[i + 1][2], centres[i + 1][1]
+
+        radians = math.atan2(a_y - b_y, a_x - b_x)
+        angle = radians * (180 / np.pi) + 90
+        orients.append(angle)
+
+    return patches, verts_present, orients
 
 
 def split_train_val_test(msks, scores, patch_size, train_percent=0.8, val_percent=0.1, healthy_only=True):

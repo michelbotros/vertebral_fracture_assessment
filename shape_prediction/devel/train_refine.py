@@ -11,18 +11,19 @@ from torchsummary import summary
 import torch.optim as optim
 import wandb
 from sklearn.metrics import accuracy_score
+import shutil
 
 
 def train(n_epochs, batch_size, lr, val_percent, k, c):
 
     # first copy the code the experiment dir
+    print('Saving experiment at: {}'.format(run_dir))
     code_dest = os.path.join(experiments_dir, run_name, 'src')
     os.makedirs(code_dest, exist_ok=True)
     shutil.copy2('config.py', code_dest)
     shutil.copy2('load_data.py', code_dest)
     shutil.copy2('train_refine.py', code_dest)
     shutil.copy2('unet.py', code_dest)
-    shutil.copy2('utils.py', code_dest)
 
     # declare device for training
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -34,7 +35,7 @@ def train(n_epochs, batch_size, lr, val_percent, k, c):
     coarse_net.eval()
 
     # construct refine net and discriminator
-    refine_net = UNet(in_channels=1).to(device)
+    refine_net = UNet(in_channels=5).to(device)
     discriminator = Discriminator().to(device)
 
     # load data
@@ -47,9 +48,6 @@ def train(n_epochs, batch_size, lr, val_percent, k, c):
 
     # make train/val split: only loads healthy in the train set
     train_set, val_set, test_set = split_train_val_test(masks, scores, patch_size, val_percent=val_percent)
-
-    print('Saving experiment at: {}'.format(run_dir))
-    os.mkdir(run_dir)
 
     # initialize data loaders
     train_loader = DataLoader(train_set, batch_size=batch_size, num_workers=16, shuffle=True)
@@ -94,7 +92,10 @@ def train(n_epochs, batch_size, lr, val_percent, k, c):
 
                 # get a batch of fake/generated from pre-trained coarse net
                 f_coarse = coarse_net.forward(x)
-                f_fine = refine_net.forward(f_coarse)
+
+                # put the coarse result in context
+                refine_input = torch.cat((x, f_coarse), dim=1)
+                f_fine = refine_net.forward(refine_input)
                 fine_hard = (f_fine > 0).to(torch.float32)
 
                 # add context
@@ -134,10 +135,13 @@ def train(n_epochs, batch_size, lr, val_percent, k, c):
 
                 # get a batch of fake/generated from pre-trained coarse net
                 f_coarse = coarse_net.forward(x)
-                f_fine = refine_net.forward(f_coarse)
+
+                # put the coarse result in context
+                refine_input = torch.cat((x, f_coarse), dim=1)
+                f_fine = refine_net.forward(refine_input)
                 fine_hard = (f_fine > 0).to(torch.float32)
 
-                # add context
+                # add context (Global Discriminator)
                 fake = torch.cat((x, fine_hard), dim=1)
 
                 # clear gradients
@@ -165,7 +169,10 @@ def train(n_epochs, batch_size, lr, val_percent, k, c):
 
                 # get a batch of fake/generated from pre-trained coarse net
                 f_coarse = coarse_net.forward(x)
-                f_fine = refine_net.forward(f_coarse)
+
+                # put the coarse result in context
+                refine_input = torch.cat((x, f_coarse), dim=1)
+                f_fine = refine_net.forward(refine_input)
                 fine_hard = (f_fine.detach() > 0).to(torch.float32)
 
                 # add context

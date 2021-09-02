@@ -1,5 +1,5 @@
 ## Automated Detection and Assessment of Vertebral Fractures in CT images
-This repository contains the code developed during an Master Thesis internship at DIAG by Michel Botros supervised by Nikolas Lessmann. 
+This repository contains the code developed during a Master Thesis internship at DIAG by Michel Botros supervised by Nikolas Lessmann. 
 Two algorithms were developed for:
 
 ### (1) Genant Classification (`genant_classifier/`)

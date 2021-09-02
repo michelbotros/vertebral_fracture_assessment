@@ -8,16 +8,12 @@ nlst_dir = os.path.join(base_dir, 'datasets/nlst/')
 
 # dir to store this experiment
 experiments_dir = os.path.join(base_dir, 'experiments/shape_prediction/')
-run_name = 'refine_final'
+run_name = 'refine_final_refine_with_context'
 run_dir = os.path.join(experiments_dir, run_name)
 
 # for loading the coarse model
 coarse_run_dir = os.path.join(experiments_dir, 'coarse_final')
 coarse_model_path = os.path.join(coarse_run_dir, 'best_model_epoch_41_loss_0.032.pt')
-
-# for loading refinement model
-refine_run_dir = os.path.join(experiments_dir, 'refine_final')
-refine_model_path = os.path.join(refine_run_dir, 'best_model_epoch_191_loss_0.033.pt')
 
 # input config
 patch_size = (64, 64, 64)

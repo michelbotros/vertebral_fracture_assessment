@@ -4,9 +4,9 @@ import os
 import pandas as pd
 from tiger.io import read_image, write_image
 from tiger.resampling import resample_mask
-from utils import compute_abnormality_score, compute_grade, extract_vertebrae
+from scoring import compute_abnormality_score, compute_grade
 from unet import UNet
-from load_data import DatasetMask
+from load_data import DatasetMask, extract_vertebrae
 from config import patch_size, resolution, context
 
 
@@ -21,7 +21,7 @@ class AbnormalityDetectionPipeline:
         print('Configuration:')
         print('Patch size: {}'.format(self.patch_size))
         print('Resolution: {}'.format(self.resolution))
-        print('Context: {}'.format(self.self.context))
+        print('Context: {}'.format(self.context))
         print('Batch size: 1')
 
         # set device to use for this pipeline
@@ -60,7 +60,6 @@ class AbnormalityDetectionPipeline:
         abnormality_scores = []
 
         for vert, orientation in zip(verts_present, orients):
-            # print('\nAssessing vertebra: {}'.format(vert))
 
             # construct sample (x, y)
             x = np.zeros((self.context * 2, *patch_size))
@@ -79,11 +78,8 @@ class AbnormalityDetectionPipeline:
             fine = self.refine_net.forward(coarse)
 
             y_pred = torch.sigmoid(fine).detach().cpu().squeeze().numpy()
-            abnormality_score = compute_abnormality_score(y, y_pred, orientation)
-            # print('Abnormality score: {}'.format(abnormality_score))
+            abnormality_score, grade = compute_abnormality_score(y, y_pred, orientation)
             abnormality_scores.append(abnormality_score)
-            grade = compute_grade(abnormality_score)
-            # print('Grade: {}'.format(grade))
             grades.append(grade)
 
         # transform to anatomical labels
@@ -109,7 +105,7 @@ def result_segmentation(mask, results):
     for vert, abnormality in zip(results['vert'], results['abnormality']):
 
         # scale a bit different for the plot (traffic light on Grand-challenge)
-        abnormality_plot = np.clip(abnormality * 3, 0, 1)
+        abnormality_plot = np.clip(abnormality * 2.25, 0, 1)
         mask = np.where(mask == vert, int(abnormality_plot * 255), mask)
 
     return mask
